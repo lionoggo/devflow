@@ -1,0 +1,4 @@
+interface:
+  display_name: "Devflow · Commit"
+  short_description: "Prepare and create safe local Git commits"
+  default_prompt: "Use $devflow-commit to prepare and create an exact local Git commit from existing workspace changes."

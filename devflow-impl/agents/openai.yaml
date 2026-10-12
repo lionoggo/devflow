@@ -1,0 +1,4 @@
+interface:
+  display_name: "Devflow · Impl"
+  short_description: "Execute approved plans, delegation, and handoffs"
+  default_prompt: "Use $devflow-impl to execute this approved plan or implementation brief with targeted checks and a compact closeout."

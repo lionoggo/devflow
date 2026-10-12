@@ -1,0 +1,4 @@
+interface:
+  display_name: "Devflow · Verify"
+  short_description: "Verify outcomes and classify the evidence"
+  default_prompt: "Use $devflow-verify to verify the implemented outcome and repair confirmed defects only when explicitly authorized."

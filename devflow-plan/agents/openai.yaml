@@ -1,0 +1,4 @@
+interface:
+  display_name: "Devflow · Plan"
+  short_description: "Take an idea to requirements, a direction, and a plan"
+  default_prompt: "Use $devflow-plan to take this idea through requirements and direction to an implementation-ready plan."

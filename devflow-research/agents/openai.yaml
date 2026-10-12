@@ -1,0 +1,4 @@
+interface:
+  display_name: "Devflow · Research"
+  short_description: "Explain how existing code works, with evidence"
+  default_prompt: "Use $devflow-research to explain how this project or feature works, with code-referenced evidence, at the right output tier."

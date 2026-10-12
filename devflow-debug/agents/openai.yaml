@@ -1,0 +1,4 @@
+interface:
+  display_name: "Devflow · Debug"
+  short_description: "Trace bugs to evidence-backed causes and fixes"
+  default_prompt: "Use $devflow-debug to investigate this bug, confirm the cause with evidence, and fix it in place if I asked for a fix and the scope is clear."
