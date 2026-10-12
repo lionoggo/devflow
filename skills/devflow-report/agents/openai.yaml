@@ -1,0 +1,3 @@
+interface:
+  display_name: "Devflow Report"
+  short_description: "按 Git 记录汇总个人工作进展"
