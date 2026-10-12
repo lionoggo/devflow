@@ -1,0 +1,5 @@
+interface:
+  display_name: "Devflow · Autorun Tick"
+  short_description: "One iteration of an armed autorun (Claude Code only)"
+policy:
+  allow_implicit_invocation: false

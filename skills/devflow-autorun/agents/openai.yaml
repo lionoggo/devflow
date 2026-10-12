@@ -1,0 +1,5 @@
+interface:
+  display_name: "Devflow · Autorun"
+  short_description: "Arm, resume, or close a guarded unattended run (Claude Code only)"
+policy:
+  allow_implicit_invocation: false
