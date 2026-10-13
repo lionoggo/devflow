@@ -23,15 +23,17 @@
 
 本仓库是唯一的修改位置，各工具目录里都是指向这里的符号链接。Skill 正文和全局钩子使用 `~/.agents/skills/...` 路径，经链接解析到本仓库。
 
+autorun 的方案级进展页：`python3 -I ~/.agents/skills/devflow-autorun/scripts/status.py <项目根目录>` 生成 `.devflow/status.html`（浏览器打开），`--summary` 在终端输出几行摘要；武装时登记、每轮 tick 自动刷新并在运行结束或出现新决策时通知。设计见 `docs/plan-progress-view.md`（本次只实施了第一部分）。
+
 autorun 的守卫需要注册为 Claude Code 全局 PreToolUse 钩子；`install.sh` 只检查，不修改 `~/.claude/settings.json`，缺失时打印要添加的条目。
 
 ## 测试
 
 ```sh
-./test.sh   # guard-test.sh 和 check-test.sh
+./test.sh   # guard-test.sh、check-test.sh 和 status-test.sh
 ```
 
-修改 `guard.sh` 或 `check.sh` 后必须运行。
+修改 `guard.sh`、`check.sh` 或 `status.py` 后必须运行。
 
 ## 注意
 

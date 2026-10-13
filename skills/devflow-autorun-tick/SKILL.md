@@ -36,10 +36,18 @@ also end the loop. Change nothing.
    - log why and the pivot.
 
    The `commit <sha>` evidence format is what `check.sh` reads.
+
+   After every `log.sh` call, refresh the page and notify (step 7 below).
 6. If a unit needs a protected path, or a product or architecture decision that
    only the user can make, park it. Log it with result `parked: <reason>` and
    continue with independent units. Never work around the guard. A guard block
    is logged and parks the unit.
+
+7. Run `python3 -I $S/status.py <root> --notify`. It prints
+   `{"events": [...], "message": "..."}`. When `message` is not empty, send it
+   once with PushNotification (load the tool with ToolSearch if it is deferred),
+   prefixed with what the user should do. Do not retry a notification that was
+   not sent, and do not log notification results.
 
 Log decision points, not every command.
 
@@ -60,13 +68,14 @@ Never relax or reinterpret a done condition to reach a stop.
    every done condition on this committed state and record the real output.
 2. Check the log against `git log <base>..HEAD`. Every advance row maps to a
    real commit. Fix mistakes with a new row, never by editing.
-3. Log a `close` row with the result. Then `rm .devflow/<slug>.running` and end the loop.
+3. Log a `close` row with the result. Then `rm .devflow/<slug>.running`, run
+   §1 step 7 once more, and end the loop.
 4. Reply in the devflow-impl closeout shape:
    - result (完成 / 部分完成 / 受阻) and the commit range `<base>..HEAD`;
    - each condition → evidence → result;
    - parked units and dead-end notes;
    - 人工项 as a checklist for the user;
-   - the log path.
+   - the log path and the progress page path.
 5. Suggest independent acceptance in a new session with `devflow-verify`, given
    only the contract's conditions, the commit range, and the log
    (`devflow-impl/references/handoff.md`).
