@@ -35,6 +35,10 @@ Risks: <only ones that still hold after the plan>
   or command). Unit and static checks support it; they do not prove it alone.
 - Add stages only when ordering, integration risk, or irreversibility matters.
   Each stage states what works after it and how that is checked.
+- When the plan will run as several devflow-autorun contracts, give the stage
+  an id (P1), name each planned contract (p1-core, p1-web, …), and put the
+  checks only a human can do in a table under a heading containing 人工项:
+  `| 编号 | 内容 | 方法 |`. Arming registers these for the progress page.
 
 ## Architecture Section (only when needed)
 
