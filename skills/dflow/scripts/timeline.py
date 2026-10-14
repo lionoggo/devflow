@@ -3,7 +3,8 @@
 
 Usage: python3 -I timeline.py [--danger] <session-id or transcript.jsonl>...
 A session id is looked up as ~/.claude/projects/*/<id>.jsonl (override the root with
-DFLOW_TRANSCRIPTS). Output, one line per tool call, sorted by time:
+DFLOW_TRANSCRIPTS), together with its subagents' transcripts in <id>/subagents/*.jsonl,
+which are labelled agent-<id> in column 2. Output, one line per tool call, sorted by time:
   <ts>\t<session[:8]>\t<tool>\t<command or path>\t<ok|error>\t<first line of result>
 A call that matches an action the unattended playbook forbids is marked DANGER in column 5.
 --danger prints only those rows and exits 1 when there are any (use it instead of grepping,
@@ -24,12 +25,21 @@ DANGER = re.compile(
     r"stash(?!\s+list)|tag\s+\w+|branch\s+-[dDmMfc]|worktree\s+(?:add|remove|move|prune))\b")
 
 
+# `parallel.sh land|cleanup` is the one sanctioned use of cherry-pick, worktree removal,
+# and branch deletion; drop that fragment before scanning so the rest of the line still counts.
+SANCTIONED = re.compile(r"(\S*/)?parallel\.sh\s+(land|cleanup)\s+[a-z0-9-]+(\s+[A-Za-z0-9_.-]+)?")
+
+
 def locate(arg):
+    """Transcript paths for a .jsonl path or a session id (plus its subagents)."""
     if arg.endswith(".jsonl") and os.path.exists(arg):
-        return arg
+        return [arg]
     root = os.environ.get("DFLOW_TRANSCRIPTS", os.path.expanduser("~/.claude/projects"))
     hits = glob.glob(os.path.join(root, "*", arg + ".jsonl"))
-    return hits[0] if hits else None
+    if not hits:
+        return []
+    subs = sorted(glob.glob(os.path.join(hits[0][:-6], "subagents", "*.jsonl")))
+    return hits[:1] + subs
 
 
 def one_line(v, n=160):
@@ -64,7 +74,8 @@ def rows(path):
         content = (e.get("message") or {}).get("content")
         if not isinstance(content, list):
             continue
-        sid = (e.get("sessionId") or os.path.basename(path)[:-6])[:8]
+        name = os.path.basename(path)[:-6]
+        sid = name if name.startswith("agent-") else (e.get("sessionId") or name)[:8]
         for b in content:
             if b.get("type") == "tool_use":
                 inp = b.get("input") or {}
@@ -77,7 +88,7 @@ def rows(path):
                 c[4] = "error" if b.get("is_error") else "ok"
                 c[5] = one_line(b.get("content", ""))
     for c in out:
-        if c[2] == "Bash" and DANGER.search(c.pop()):  # scan the full command, not the shown text
+        if c[2] == "Bash" and DANGER.search(SANCTIONED.sub(" ", c.pop())):  # full command, minus the sanctioned call
             c[4] = "DANGER " + c[4]
         elif len(c) == 7:
             c.pop()
@@ -93,12 +104,13 @@ def main(args):
         args = args[1:]
     allrows, missing = [], False
     for a in args:
-        p = locate(a)
-        if not p:
+        paths = locate(a)
+        if not paths:
             print("未核实\t" + a, file=sys.stderr)
             missing = True
             continue
-        allrows += rows(p)
+        for p in paths:
+            allrows += rows(p)
     flagged = False
     for r in sorted(allrows, key=lambda r: r[0]):
         if danger and not r[4].startswith("DANGER"):
