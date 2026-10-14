@@ -14,7 +14,7 @@ hits=0
 for f in "$@"; do
     name=$f; [ "$f" = - ] && name=stdin
     out=$(awk -v name="$name" -F'\t' '
-        NR == FNR { if ($0 !~ /^#/ && NF == 3) { n++; rule[n] = $1; lang[n] = $2; term[n] = tolower($3) } next }
+        NR == FNR { if ($0 !~ /^#/ && NF >= 3) { n++; rule[n] = $1; lang[n] = $2; term[n] = tolower($3); skip[n] = $4 } next }
         /^[ \t]*```/ { fence = !fence; next }
         fence || /^[ \t]*>/ || /<!-- slop-ok:/ { next }
         {
@@ -24,7 +24,8 @@ for f in "$@"; do
                 while ((p = index(rest, term[i])) > 0) {
                     pre = p + off > 1 ? substr(low, p + off - 1, 1) : ""
                     post = substr(low, p + off + length(term[i]), 1)
-                    if (lang[i] != "en" || (pre !~ /[a-z]/ && post !~ /[a-z]/)) { found = 1; break }
+                    after = skip[i] != "" && p + off > length(skip[i]) && substr(low, p + off - length(skip[i]), length(skip[i])) == skip[i]
+                    if (!after && (lang[i] != "en" || (pre !~ /[a-z]/ && post !~ /[a-z]/))) { found = 1; break }
                     off += p; rest = substr(rest, p + 1)
                 }
                 if (found) printf "%s:%d: [rule %s] %s: %s\n", name, FNR, rule[i], term[i], $0

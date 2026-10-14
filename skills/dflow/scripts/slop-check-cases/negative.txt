@@ -9,3 +9,4 @@ Enhancement requests go to the tracker.
 用 `赋能` 当反例时放在行内代码里。
 > 引用块里的赋能不报告。
 闭环控制器的增益是 0.5。 <!-- slop-ok: 控制论术语 -->
+偏好问题由用户决定。

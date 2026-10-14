@@ -1,4 +1,5 @@
-# rule	lang	term   (en: case-insensitive whole word/phrase; zh: literal substring)
+# rule	lang	term[	not-after]   (en: case-insensitive whole word/phrase; zh: literal substring;
+# optional 4th column: skip a match right after this text, e.g. 偏 for 偏好问题)
 3	en	highlighting
 3	en	showcasing
 3	en	fostering
@@ -49,7 +50,7 @@
 20	zh	随时告诉我
 22	en	great question
 22	en	you're absolutely right
-22	zh	好问题
+22	zh	好问题	偏
 22	zh	你说得完全正确
 23	en	in order to
 23	en	due to the fact that
