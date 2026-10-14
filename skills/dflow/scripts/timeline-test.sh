@@ -24,5 +24,10 @@ python3 -I "$here/timeline.py" "$f" | grep -q 'unittest' && ok || bad "path argu
 d=$(python3 -I "$here/timeline.py" --danger aaaa1111 bbbb2222); rc=$?
 [ $rc = 1 ] && [ "$(echo "$d" | wc -l | tr -d ' ')" = 4 ] && ok || bad "--danger: exit $rc: $d"
 python3 -I "$here/timeline.py" --danger aaaa1111 >/dev/null; [ $? = 1 ] && ok || bad "--danger exit"
+for c in "git switch -C worktree-agent-abc 1234:False" "git switch main:True" "git switch -C other HEAD:True"; do
+    r=$(python3 -I -c "import sys,re;sys.path.insert(0,'$here');import timeline;print(bool(timeline.DANGER.search(sys.argv[1])))" "${c%:*}")
+    [ "$r" = "${c##*:}" ] && ok || bad "danger($c) = $r"
+done
+rm -rf "$here/__pycache__"
 echo "timeline-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]
