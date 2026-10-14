@@ -7,11 +7,13 @@ pstack `how`, `why`. Principles: 以现状为准, 解释数字, 真实证据.
 1. Name the target and the question. Split it: **how** (what the code does,
    where things live, the runtime flow) or **why** (what forces shaped it).
    Vague target: state your best reading and go on.
-2. **How.** Judge the size first.
-   - **Simple** (one module, one function, a narrow question): read the main
-     path yourself.
-   - **Complex** (a subsystem across many files or services, a cross-cutting
-     feature, a whole-project overview): split the question into 2–4 angles
+2. **How.** Judge the size first, by measuring: list the files the answer
+   depends on and their line counts (`git ls-files | grep …`, `wc -l`).
+   - **Simple**: at most 5 files and about 1000 lines, one language, one
+     process. Read the main path yourself.
+   - **Complex**: anything bigger, or the answer spans two or more languages,
+     processes, or services, or it is a whole-project overview. Say the
+     measurement in one line, then split the question into 2–4 angles
      that do not overlap (for example entry and flow, data and storage,
      configuration and boundaries). In one message, start one read-only Claude
      subagent per angle (the Explore agent type, model Opus or lower) and
@@ -21,7 +23,6 @@ pstack `how`, `why`. Principles: 以现状为准, 解释数字, 真实证据.
      and read the main path yourself before stating it. Explorer findings are
      leads, not evidence. Name which angle each explorer took, and write
      "codex 未参与：<原因>" when it could not run.
-   When in doubt, take the simple path.
    For either size: read the main path yourself, entry to effect. Tie each key claim
    to `path:line` taken from numbered output; otherwise cite file and symbol.
    Keep each claim's conditions (only when configured, fallback, default vs

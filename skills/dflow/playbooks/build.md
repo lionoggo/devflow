@@ -44,6 +44,7 @@ give it the scope, the data shape, and the check; review its diff yourself.
 **结果**：<完成 / 部分完成 / 受阻> — <一句话>
 - 提交：<sha 和标题，按顺序>
 - 验收：<每个标签 → 证据（层级）→ 结果；没跑的写未验证和原因>
+- 结构：<按 references/sketch.md 先定了结构（选中的形状一句话）/ 跳过：原因>
 - 影响面：<见 SKILL.md>
 - 改动的已有测试：<哪个测试的预期变了 → 为什么；没有就省略>
 - 我做的选择：<选择 → 怎么改回>
