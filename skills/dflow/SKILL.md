@@ -156,10 +156,6 @@ as one explorer in a complex 调研. Elsewhere only on request. From Claude use
 
 ## Reply
 
-- Never end a turn by announcing work you have not done ("我再核对一遍",
-  "接下来我会…"): do it in this turn, or say plainly that it is left undone
-  and why. Waiting on background work you started is the one exception: say
-  what you are waiting for.
 - Simplified Chinese. Conclusion first. Short. One concrete example when it
   helps. No coined terms, internal IDs, or English field names. No filler,
   flattery, hedging stacks, or empty endings (`references/unslop.md` rules
