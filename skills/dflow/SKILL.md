@@ -111,12 +111,13 @@ CONTRIBUTING) when it names one. Otherwise follow the majority language of the
 last 10 non-merge subjects (`git log -10 --no-merges --format=%s`), ignoring
 the `type(scope):` prefix. A tie or no history means English.
 
-**Scratch directory:** temporary scripts, prototypes, and evidence go to the
-session scratchpad when the host gives one (Claude Code names it in the system
-prompt). Without one, use `<repo>/.dflow/tmp/<YYYYmmddTHHMMSS>/`, first making
-sure `.git/info/exclude` has a `.dflow/` line. Never write to `/tmp` or the
-root of `$TMPDIR`. At the end, stop processes you started, delete scratch
-files that are not evidence, and name the evidence path in the reply.
+**Scratch directory:** get one with `d=$(<this skill>/scripts/scratch.sh [name])`
+(it creates `<repo>/.dflow/tmp/<time>[-name]/` and keeps it out of Git). Every
+temporary file goes there, including one-line test inputs, prototypes,
+evidence, and paths you suggest to the user; use `mktemp -p "$d"`, never bare
+`mktemp`. Never write to `/tmp` or `$TMPDIR`. At the end, stop processes you
+started, delete scratch files that are not evidence, and name the evidence
+path in the reply.
 
 **Ask first:**
 - push, open a PR, merge, rebase, amend, reset, force, or rewrite history;

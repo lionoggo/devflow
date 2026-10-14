@@ -44,7 +44,7 @@ One demo per mechanism. Do not turn the whole report into a web page.
   a browser, and report its actual git status.
 - Never publish to a hosted service (for example the Artifact tool) unless
   the user explicitly asks for a hosted page in the current request.
-- Keep the data-generation script in the scratchpad and state in the reply
+- Keep the data-generation script in the scratch directory (`scripts/scratch.sh`) and state in the reply
   how the embedded data was produced.
 - After every edit, syntax-check the inline script (for example extract it and
   run `node --check`) and render the page once; text edits inside JS strings
