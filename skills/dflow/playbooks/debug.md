@@ -22,7 +22,9 @@ and devflow-debug. Principles: 找根因, 通用解, 真实证据, 测行为.
 6. Make the smallest fix the evidence justifies. Revert anything a refuted
    hypothesis motivated. Fix every instance of the pattern.
 7. Rerun the original reproduction on the same surface, plus the relevant
-   tests. Commit locally (test first, then fix, when there is a test).
+   tests. Then `SKILL.md` **After any change**: smoke nearby inputs and the
+   failure path, and write the 影响面 line. Commit locally (test first, then
+   fix, when there is a test).
 8. If this is the second failed fix for the same symptom, stop fixing: write
    down the shared premise, run the cross-model review, and change approach.
 
@@ -32,6 +34,7 @@ and devflow-debug. Principles: 找根因, 通用解, 真实证据, 测行为.
 **结论**：<已修复 / 原因已确认未修 / 未确认 / 受阻> — <原因一句话>
 - 证据：<最小的决定性证据>
 - 修复：<改了什么，提交号；或建议的改法 / 恢复步骤>
+- 影响面：<见 SKILL.md>
 - 通用性：<还覆盖哪些情况，查过哪些>
 - 验证：<复现前后的真实输出；测试结果；没跑的写原因>
 - 我做的选择：<选择 → 怎么改回；没有就省略>

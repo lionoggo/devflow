@@ -8,9 +8,12 @@ result without stopping.** From devflow-impl and pstack `feature`. Principles:
    acceptance labels; without a plan, derive A1, A2… from the request and mark
    them derived), and the approach. Then start; do not wait.
 2. Name the data shape the change works on before writing logic, and where it
-   lives in the current code. For a change crossing module boundaries or a
-   shared contract, list what depends on it first (callers, data readers,
-   configs) and how each will be checked.
+   lives in the current code. When the change touches a contract others can
+   observe (`SKILL.md` **After any change** step 3), run
+   `references/impact.md` before editing and say so in the route line.
+   Changing an interface inside the repo: migrate every caller in the same
+   change and delete the old shape; no compatibility layer unless external
+   users depend on it.
 3. Work in units, riskiest first, each ending in a check. After each passing
    unit, commit locally with its own message. A unit that did not move its
    check is reverted.
@@ -23,7 +26,9 @@ result without stopping.** From devflow-impl and pstack `feature`. Principles:
    dependent work starts. When a stage remains and the user asked for the whole
    plan, continue into it.
 7. Finish with 验收 (`playbooks/verify.md`) for user-visible results; an
-   end-to-end promise needs an end-to-end observation.
+   end-to-end promise needs an end-to-end observation. Then `SKILL.md`
+   **After any change**: smoke beyond the main check and write the 影响面
+   line.
 
 Delegation: one subagent per independent slice only when it cuts total cost;
 give it the scope, the data shape, and the check; review its diff yourself.
@@ -34,6 +39,7 @@ give it the scope, the data shape, and the check; review its diff yourself.
 **结果**：<完成 / 部分完成 / 受阻> — <一句话>
 - 提交：<sha 和标题，按顺序>
 - 验收：<每个标签 → 证据（层级）→ 结果；没跑的写未验证和原因>
+- 影响面：<见 SKILL.md>
 - 改动的已有测试：<哪个测试的预期变了 → 为什么；没有就省略>
 - 我做的选择：<选择 → 怎么改回>
 - 下一步：<剩余阶段或未覆盖项；没有就省略>

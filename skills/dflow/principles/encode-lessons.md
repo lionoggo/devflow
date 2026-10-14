@@ -13,3 +13,6 @@ instruction twice, fix it at the highest level that works:
 Prove a new check fails on a real past mistake. If the fix is structural, keep
 only the structural fix; the instruction was the symptom. See
 `playbooks/tune.md`.
+
+Example in this skill: the recurring "看不懂、自造术语" correction became
+`scripts/slop-check.sh` (a word list with tests) instead of one more rule.
