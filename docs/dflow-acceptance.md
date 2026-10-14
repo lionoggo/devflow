@@ -49,3 +49,14 @@
 方案：`docs/plan-dflow-stage3.md`。在 tmux 的交互会话里跑了 6 次无人值守，A1–A13 全部通过，过程中修复 5 个问题。详细记录在 `docs/acceptance/stage3/README.md`，每次运行的事实在同目录。
 
 没有覆盖：撤销"无进展的一轮"、跨多次唤醒的长时间运行、手机推送。留给 E1（用户在 ludus 的真实试用）。
+
+## 补充：先定结构、在场决策日志、复杂调研并行探索（2026-10-14）
+
+用户要求补齐与 pstack 的三处差距：动手前先定结构（`references/sketch.md`，改自 architect，不含多方案并行）；在场的多阶段工作也写决策日志（`references/decision-log.md`，由 show-me-your-work 抽成共用说明）；复杂调研拆角度，由 Claude 子 agent 和 codex 并行探索，主会话汇总（`playbooks/research.md`）。
+
+| 项 | 请求 | 结果 |
+|---|---|---|
+| B1 在场多阶段 | 演示仓库，`/dflow 按 docs/plan-export-formats.md 实施`（两阶段） | 通过：`.dflow/export-formats.tsv` 有 start、分叉、阶段、更正行；收尾对照时间线补了 3 行缺漏，codex 审查后又修了 2 处（CSV 编码、xlsx 测试太弱），回复末尾有"需要你注意（审查：codex）"。没走先定结构，也没写跳过原因 → 实施回复加了"结构"一行（0580459） |
+| B3 简单调研 | `/dflow 调研：app/report.py 的 load_rows 是怎么跳过表头的` | 通过：没有拆角度，没有子 agent，$0.22 |
+| B4 先定结构 | `/dflow 新增一个 Reporter 类，统一 cli 和 export 的输出` | 通过：先定结构，回复写明选中的形状和否决的形状；快照逐字节不变；小数精度的行为变化已说明 |
+| B2 复杂调研（ludus，只读） | `/dflow 调研：ludus 的 p1-bench 验收从启动到出结果是怎么工作的` | 前两次没有拆角度（第二次已测出 10 个文件、882 行、两种语言，仍按简单处理），推测是全局"子 agent 只在降本时用"的规则压过了剧本。加上"先写规模判断"并说明这种拆分属于全局规则允许的情况（89e7d1a）后，第三次派了 3 个只读 Explore 子 agent 加 1 路 codex，主会话逐条核对；其中一个子 agent 连接中断，主会话自己补读了那一路。费用 $2.92，简单读法是 $0.52–0.65，约 5 倍。ludus 仓库无改动 |
