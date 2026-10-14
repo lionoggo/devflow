@@ -7,10 +7,12 @@ repo=$(cd "$(dirname "$0")" && pwd)
 check=${1:-}
 problems=0
 
-# devflow-report is Codex-only; everything else goes to the shared dir and Claude Code.
+# devflow-report is Codex-only; dflow-report goes to Codex and Claude Code;
+# everything else goes to the shared dir and Claude Code.
 targets_for() {
     case "$1" in
         devflow-report) echo "$HOME/.codex/skills" ;;
+        dflow-report) echo "$HOME/.codex/skills $HOME/.claude/skills" ;;
         *) echo "$HOME/.agents/skills $HOME/.claude/skills" ;;
     esac
 }
