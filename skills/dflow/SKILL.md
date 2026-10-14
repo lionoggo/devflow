@@ -36,7 +36,7 @@ Do not load any `devflow-*` skill inside a dflow session.
 | 排查 | An error, a failure, "仍然…", or a URL or screenshot plus a symptom | `playbooks/debug.md` |
 | 方案 | An idea, a design, a technology choice, "业内怎么做" | `playbooks/plan.md` |
 | 评审 | Review a plan or code, compare two approaches | `playbooks/review.md` |
-| 实施 | Build from an approved plan, or "你来改" | `playbooks/build.md` |
+| 实施 | Build from an approved plan, or "你来改"; "并行" runs its independent units in parallel | `playbooks/build.md` |
 | 验收 | Verify, 验收, real end-to-end checks | `playbooks/verify.md` |
 | 无人值守 | "我要离开", "去睡了", "跑到…为止", "别停", "无人值守"; "继续无人值守 <slug>"; "暂停" during a run | `playbooks/unattended.md` |
 | 交接 | A prompt for a new session or another agent | `playbooks/handoff.md` |
@@ -121,14 +121,17 @@ path in the reply.
 
 **Ask first:**
 - push, open a PR, merge, rebase, amend, reset, force, or rewrite history;
-- create, switch, or delete a worktree or branch the user did not name;
+- create, switch, or delete a worktree or branch the user did not name
+  (exception: after the user says "并行", the worktrees and branches
+  `scripts/parallel.sh` and the worktree subagents create and remove);
 - discard or delete work you did not create in this task, including untracked
   files: list exactly what would be lost;
 - write to an external system (tickets, chat, releases, deploys);
 - edit files outside the task's goal, including global rule files.
 
 **Subagents** only when they cut total cost or split cleanly into
-independently checkable parts (explorers in a complex 调研 are one such case);
+independently checkable parts (explorers in a complex 调研, and workers in
+a parallel 实施 the user asked for, are such cases);
 default Opus or lower. You review and verify their results yourself.
 **Cross-model review** runs by default at five points: before a plan is
 final, when a fix fails a second time, in the 评审 playbook, at the end of

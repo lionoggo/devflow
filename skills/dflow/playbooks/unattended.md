@@ -34,7 +34,9 @@ can run.
    and script the conditions use). A needed edit outside them is a gate.
 5. **Will not do**: push, merge, rebase, reset, stash, clean, cherry-pick,
    amend; switch or delete branches, tags, worktrees; edit protected paths;
-   write to outside systems. The run sends two kinds of device notifications
+   write to outside systems. The one exception: in a parallel run,
+   `parallel.sh land` and `cleanup` may cherry-pick, remove worktrees, and
+   delete the branches it created. The run sends two kinds of device notifications
    (see **Notify**); "开始" approves that.
 6. **Known open questions**: product or preference calls visible now, each
    with its default, so the user can change it here.
@@ -44,14 +46,20 @@ can run.
    `caffeinate` keeps the Mac awake; do not edit this repo by hand while it
    runs (say "暂停" first). First unattended run of this kind: suggest the
    user watch the first two rounds.
-9. **Start line**: check that the Skill tool can call `loop`. If it cannot,
+9. **Parallel or in order**: run the throughput check in
+   `references/parallel.md`. Show both plans with their estimated cost and
+   wall time; the default is in order. "开始，并行" picks parallel and
+   approves the worktrees `parallel.sh` creates and removes.
+10. **Start line**: check that the Skill tool can call `loop`. If it cannot,
    tell the user to reply with `/loop /dflow 继续无人值守 <slug>` instead of
    "开始", and do steps 1–5 below when that arrives.
 
 On "开始":
 1. Re-check HEAD, the tree, and each baseline output. Anything changed since
    the frame: stop and show what changed.
-2. Create the branch. Make sure `.git/info/exclude` has `.dflow/`.
+2. Create the branch. Make sure the exclude file
+   (`git rev-parse --git-path info/exclude`) has `.dflow/`; for a parallel
+   run, `parallel.sh prepare <slug>` also adds `.claude/worktrees/`.
 3. Write `.dflow/<slug>.md`: first a block of `key: value` lines (`slug`,
    `branch`, `base` full SHA, `deadline`, `allow` and `protect` as
    space-separated globs), a blank line, then the human part: goal, stages and
@@ -68,6 +76,11 @@ On "开始":
    interval (dynamic). Then run the first round now.
 
 ## Round
+
+Every wake-up is a Round: a `/loop` wake, or a parallel worker's completion
+notification. In a parallel run, a Round handles arrived completions per
+`references/parallel.md`; while workers are still running, a `/loop` wake
+dispatches nothing new.
 
 1. `$S/scripts/run-state.sh check <slug>`:
    - exit 0: go on;
@@ -147,7 +160,9 @@ tree is clean, and the first step on resume.
    pass.
 4. Log `start` naming the inherited ts range and your full session id. Keep
    the manifest's deadline.
-5. A run that paused on a `wip:` commit: verify it or revert it first.
+5. A run that paused on a `wip:` commit: verify it or revert it first. A
+   parallel run: handle each `dispatched` unit per the Pickup section of
+   `references/parallel.md`.
 6. Do not redo committed units; find the next step from the log and
    `git log`.
 7. `run-state.sh caffeinate <slug>`, start the loop as in **Frame** step 6,

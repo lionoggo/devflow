@@ -11,6 +11,9 @@ result without stopping.** From devflow-impl and pstack `feature`. Principles:
    lives in the current code. When the change adds a module, a type, or a
    public interface, or reshapes code two or more modules call, run
    `references/sketch.md` first (usage, two shapes, red flags, then fill).
+   Then run the throughput check in `references/parallel.md` and write its
+   verdict line. Continue in order unless the user said "并行"; with it,
+   follow `references/parallel.md` for the independent units.
    When the change touches a contract others can
    observe (`SKILL.md` **After any change** step 3), run
    `references/impact.md` before editing and say so in the route line.
@@ -45,6 +48,7 @@ give it the scope, the data shape, and the check; review its diff yourself.
 - 提交：<sha 和标题，按顺序>
 - 验收：<每个标签 → 证据（层级）→ 结果；没跑的写未验证和原因>
 - 结构：<按 references/sketch.md 先定了结构（选中的形状一句话）/ 跳过：原因>
+- 并行：<可拆 N 路，说"并行"启用 / 不适合：原因 / 并行 N 路，落地 X 个，退回 Y 次，保留的 worktree：…>
 - 影响面：<见 SKILL.md>
 - 改动的已有测试：<哪个测试的预期变了 → 为什么；没有就省略>
 - 我做的选择：<选择 → 怎么改回>
