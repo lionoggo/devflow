@@ -1,6 +1,6 @@
 ---
 name: dflow
-description: "The single entry for development work: routes a goal to a playbook (teach, research, debug, plan, review, build, verify, unattended, handoff, status, report, ship, tune), works without blocking on reversible steps, and closes with evidence. Only for explicit /dflow."
+description: "The single entry for development work: routes a goal to a playbook (teach, research, debug, plan, review, build, verify, impact, prototype, polish, unattended, handoff, status, report, ship, tune), works without blocking on reversible steps, and closes with evidence. Only when the user names dflow (/dflow or $dflow)."
 disable-model-invocation: true
 ---
 
@@ -19,8 +19,8 @@ to this file's directory.
    the current playbook.
 3. Make the route visible before any other work. Start the reply with one
    line: `剧本：<name>（<step> → <step> → …>）`. If a todo tool exists
-   (TodoWrite, or TaskCreate found via ToolSearch), also put the playbook's
-   steps in it verbatim. A step you skip is named with `跳过：<原因>` in the
+   (TodoWrite, TaskCreate found via ToolSearch, or Codex update_plan), also
+   put the playbook's steps in it verbatim. A step you skip is named with `跳过：<原因>` in the
    final reply.
 4. Run it. Read `principles/<name>.md` in full for any principle you apply.
 5. End with the playbook's reply, written per **Reply** below.
@@ -44,8 +44,14 @@ Do not load any `devflow-*` skill inside a dflow session.
 | 周报 | Summarize work over a period from Git | `playbooks/report.md` |
 | 提交与发布 | Commit, split commits, open or follow a PR | `playbooks/ship.md` |
 | 调优 | Change a skill, AGENTS.md or CLAUDE.md, or "make this mistake impossible" | `playbooks/tune.md` |
+| 影响面 | "影响面", "会影响什么", "这个改动安全吗" | `references/impact.md` |
+| 原型 | "做个原型", "哪种效果好", "先做出来看看", or a fork about how a screen looks | `playbooks/prototype.md` |
+| 润色 | "润色", "去 AI 腔", "精简这段文字" | `references/unslop.md` |
 
-No match: treat it as 方案 and frame the goal and its done check first. A
+Pick by the output the user wants: a list of findings is 评审; an
+explanation is 讲解 or 调研; variants to look at is 原型; an executable plan
+is 方案. No match: treat it as 方案 and frame the goal and its done check
+first. A
 playbook file that does not exist yet: say so in one line, then work by the
 rules in this file.
 
@@ -68,6 +74,29 @@ Read `principles/never-block.md`. In short:
   approach in two or three lines, then starts without waiting. Only work
   expected to run longer than an hour stops once for the framing.
 
+## After any change
+
+Every playbook that edits files (实施, 排查, 调优, 润色, 提交与发布, and any
+other) ends the same way, before its own reply:
+
+1. Smoke the changed behavior beyond the main check: at least one nearby input
+   or state, a failure path, or another place that uses the same data. Keep
+   the command and its output as evidence.
+2. Write one line in the reply: `影响面：<影响到什么>；<为什么安全，或风险在哪>（<证据等级>）`.
+   Evidence levels: 说了 · 指到代码行 · 推演排除 · 跑过 · 真实应用复现. A
+   text-only change writes `影响面：无需行为冒烟，仅改文字`; never drop the
+   line.
+3. Run the full analysis in `references/impact.md` when the change touches a
+   contract others can observe: an interface or return shape used elsewhere, a
+   data or save format, a config key, or deleting code that runtime, config,
+   reflection, resource files, or external users may reference. Say why in
+   the route line. A private rewrite, dead code you confirmed unreferenced, or
+   a text-only change does not trigger it.
+4. Text that others will read later (plan docs, reports, handoff prompts,
+   commit messages, PR bodies) goes through `references/unslop.md`; run
+   `scripts/slop-check.sh <file>` or `… -` on stdin and fix or justify each
+   unexempted hit.
+
 ## Authority
 
 This section overrides any playbook.
@@ -75,7 +104,19 @@ This section overrides any playbook.
 **Do directly:** read, search, run checks; edit files inside the task's scope;
 commit locally on the current branch, split by feature, subject
 `<type>(<scope>): <subject>` within 72 characters; undo your own changes from
-this task; write scratch scripts in the session scratchpad.
+this task; write scratch files in the scratch directory below.
+
+**Commit language:** follow the repo's rule file (AGENTS.md, CLAUDE.md,
+CONTRIBUTING) when it names one. Otherwise follow the majority language of the
+last 10 non-merge subjects (`git log -10 --no-merges --format=%s`), ignoring
+the `type(scope):` prefix. A tie or no history means English.
+
+**Scratch directory:** temporary scripts, prototypes, and evidence go to the
+session scratchpad when the host gives one (Claude Code names it in the system
+prompt). Without one, use `<repo>/.dflow/tmp/<YYYYmmddTHHMMSS>/`, first making
+sure `.git/info/exclude` has a `.dflow/` line. Never write to `/tmp` or the
+root of `$TMPDIR`. At the end, stop processes you started, delete scratch
+files that are not evidence, and name the evidence path in the reply.
 
 **Ask first:**
 - push, open a PR, merge, rebase, amend, reset, force, or rewrite history;
@@ -86,10 +127,12 @@ this task; write scratch scripts in the session scratchpad.
 - edit files outside the task's goal, including global rule files.
 
 **Subagents** only when they cut total cost; default Opus or lower.
-**Cross-model review** with `codex exec -s read-only` runs by default at three
-points: before a plan is final, when a fix fails a second time, and at an
-unattended closeout. Elsewhere only on request. If codex is unavailable, say
-"未审查：<原因>"; never substitute a Claude self-review.
+**Cross-model review** runs by default at four points: before a plan is
+final, when a fix fails a second time, at an unattended closeout, and in the
+评审 playbook. Elsewhere only on request. From Claude use
+`codex exec -s read-only`; from Codex use a read-only Claude session
+(`claude -p --permission-mode plan`). If the other model is unavailable, say
+"未审查：<原因>"; never substitute a self-review.
 
 ## Principles
 
@@ -110,7 +153,9 @@ unattended closeout. Elsewhere only on request. If codex is unavailable, say
 ## Reply
 
 - Simplified Chinese. Conclusion first. Short. One concrete example when it
-  helps. No coined terms, internal IDs, or English field names.
+  helps. No coined terms, internal IDs, or English field names. No filler,
+  flattery, hedging stacks, or empty endings (`references/unslop.md` rules
+  20–25 and 37).
 - Every claim carries its evidence in the same sentence, or is labeled 推测
   with how to check it. Never hand the user a check you could run.
 - Itemized revisions use P0/P1/P2 with the location and the smallest change.

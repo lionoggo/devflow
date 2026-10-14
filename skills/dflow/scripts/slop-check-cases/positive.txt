@@ -1,0 +1,26 @@
+# rule|text  — each line must be reported with that rule
+3|The release ships today, highlighting our focus on speed.
+5|Experts believe this cache is fast enough.
+5|业内普遍认为这种做法更稳定。
+7|Additionally, the parser handles dates.
+7|这个模块赋能了上层业务。
+8|The config file serves as the single source of truth.
+8|这个脚本扮演着调度者的角色。
+9|这不仅仅是一个工具，更是一种方法。
+13|结果很好——但还有问题。
+20|I hope this helps with the migration.
+20|希望对你有帮助。
+22|Great question, the answer is no.
+22|好问题，答案是不行。
+23|In order to run it, install the CLI.
+23|值得注意的是，这里会重试三次。
+24|This could potentially break saves.
+24|这在一定程度上提高了速度。
+25|The future looks bright for this module.
+25|这个改动意义重大。
+26|The scheduler is the substrate for jobs.
+26|这个库是整个系统的底座。
+31|We utilize a queue for retries.
+31|对查询进行优化后快了两倍。
+34|我们对代码进行了重构。
+35|这一步实现对数据的统一管理。

@@ -1,0 +1,83 @@
+# rule	lang	term   (en: case-insensitive whole word/phrase; zh: literal substring)
+3	en	highlighting
+3	en	showcasing
+3	en	fostering
+3	en	underscoring
+5	en	experts believe
+5	en	industry reports suggest
+5	en	some critics argue
+5	zh	业内普遍认为
+5	zh	研究表明
+5	zh	专家指出
+7	en	additionally
+7	en	crucial
+7	en	delve
+7	en	enduring
+7	en	enhance
+7	en	garner
+7	en	interplay
+7	en	intricate
+7	en	pivotal
+7	en	showcase
+7	en	tapestry
+7	en	testament
+7	en	underscore
+7	en	vibrant
+7	zh	赋能
+7	zh	抓手
+7	zh	闭环
+7	zh	打通
+7	zh	沉淀
+7	zh	心智
+7	zh	底层逻辑
+7	zh	颗粒度
+7	zh	助力
+7	zh	深耕
+7	zh	全方位
+7	zh	多维度
+8	en	serves as
+8	en	stands as
+8	en	boasts
+8	zh	扮演着
+8	zh	承担着
+9	zh	不仅仅是
+13	zh	—
+20	en	i hope this helps
+20	en	let me know if
+20	zh	希望对你有帮助
+20	zh	希望这对你有帮助
+20	zh	随时告诉我
+22	en	great question
+22	en	you're absolutely right
+22	zh	好问题
+22	zh	你说得完全正确
+23	en	in order to
+23	en	due to the fact that
+23	en	it is important to note
+23	zh	值得注意的是
+23	zh	需要指出的是
+23	zh	总的来说
+23	zh	众所周知
+23	zh	综上所述
+24	en	could potentially
+24	zh	在一定程度上
+25	en	the future looks bright
+25	zh	未来可期
+25	zh	意义重大
+26	en	substrate
+26	en	north star
+26	en	flywheel
+26	en	paradigm
+26	en	bedrock
+26	zh	底座
+26	zh	飞轮
+26	zh	北极星
+26	zh	护城河
+31	en	utilize
+31	en	leverage
+31	en	facilitate
+31	zh	进行优化
+31	zh	予以
+34	zh	进行了
+34	zh	作为一个
+35	zh	实现对

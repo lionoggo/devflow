@@ -1,0 +1,11 @@
+# each line must produce no report
+The parser rejects a bad date and exits with code 2.
+Enhancement requests go to the tracker.
+解析失败时以退出码 2 退出，不写入文件。
+把结果写进缓存，下次直接读。
+这个函数只在启动时调用一次。
+我们重构了代码，删掉了两个包装函数。
+旧存档里不存在这个字段，所以新代码能直接读取。
+用 `赋能` 当反例时放在行内代码里。
+> 引用块里的赋能不报告。
+闭环控制器的增益是 0.5。 <!-- slop-ok: 控制论术语 -->
