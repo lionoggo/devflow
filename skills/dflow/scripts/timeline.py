@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Merge Claude Code transcripts into one tool-call timeline for an unattended-run closeout.
 
-Usage: python3 -I timeline.py <session-id or transcript.jsonl>...
+Usage: python3 -I timeline.py [--danger] <session-id or transcript.jsonl>...
 A session id is looked up as ~/.claude/projects/*/<id>.jsonl (override the root with
 DFLOW_TRANSCRIPTS). Output, one line per tool call, sorted by time:
   <ts>\t<session[:8]>\t<tool>\t<command or path>\t<ok|error>\t<first line of result>
 A call that matches an action the unattended playbook forbids is marked DANGER in column 5.
+--danger prints only those rows and exits 1 when there are any (use it instead of grepping,
+since a command that mentions the word DANGER would match a grep).
 A session whose transcript is missing prints "未核实\t<id>" on stderr; exit 2 if any is missing.
 Read-only.
 """
@@ -76,6 +78,9 @@ def main(args):
     if not args:
         print(__doc__, file=sys.stderr)
         return 2
+    danger = args[:1] == ["--danger"]
+    if danger:
+        args = args[1:]
     allrows, missing = [], False
     for a in args:
         p = locate(a)
@@ -84,9 +89,15 @@ def main(args):
             missing = True
             continue
         allrows += rows(p)
+    flagged = False
     for r in sorted(allrows, key=lambda r: r[0]):
+        if danger and not r[4].startswith("DANGER"):
+            continue
+        flagged = flagged or r[4].startswith("DANGER")
         print("\t".join(r))
-    return 2 if missing else 0
+    if missing:
+        return 2
+    return 1 if danger and flagged else 0
 
 
 if __name__ == "__main__":

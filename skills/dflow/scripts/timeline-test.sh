@@ -16,5 +16,8 @@ err=$(python3 -I "$here/timeline.py" aaaa1111 cccc3333 2>&1 >/dev/null); rc=$?
 echo "$err" | grep -q $'未核实\tcccc3333' && ok || bad "missing not reported"
 f="$here/timeline-cases/proj/aaaa1111.jsonl"
 python3 -I "$here/timeline.py" "$f" | grep -q 'unittest' && ok || bad "path argument"
+d=$(python3 -I "$here/timeline.py" --danger aaaa1111 bbbb2222); rc=$?
+[ $rc = 1 ] && [ "$(echo "$d" | wc -l | tr -d ' ')" = 1 ] && ok || bad "--danger: exit $rc: $d"
+python3 -I "$here/timeline.py" --danger bbbb2222 >/dev/null; [ $? = 0 ] && ok || bad "--danger clean exit"
 echo "timeline-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]

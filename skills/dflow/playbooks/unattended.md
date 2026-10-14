@@ -56,7 +56,8 @@ On "开始":
    `branch`, `base` full SHA, `deadline`, `allow` and `protect` as
    space-separated globs), a blank line, then the human part: goal, stages and
    conditions with expected results and the progress rule, units, open
-   questions with defaults. Never edit it afterwards unless the user says so;
+   questions with defaults. A check script the frame adds (an anti-shortcut
+   smoke test) lives beside it as `.dflow/<slug>-<name>`; it is protected. Never edit it afterwards unless the user says so;
    then re-claim and log a `correction` row.
 4. `$S/scripts/run-state.sh claim <slug>`, then `run-state.sh caffeinate <slug>`.
 5. Log `start` (`$S/scripts/log.sh .dflow/<slug>.tsv start …`): evidence holds
@@ -113,7 +114,9 @@ needs a "will not do" action): log `gate` with question, options, default,
 reason, and how to change it; notify. Work on independent units first. Only
 when none are left, go ahead on the default: those commits start with
 `default:`, and at most one more unit is built on a default before the rest of
-its dependents are gated. A unit that needs a forbidden action is never done
+its dependents are gated. A unit whose code would stay the same whichever
+option is picked (it only calls or combines the defaulted units) does not
+depend on the gate; do it normally. A unit that needs a forbidden action is never done
 on a default.
 
 **Log** rows: phases `start round gate default dead stage-done side blocked
@@ -161,7 +164,8 @@ tree is clean, and the first step on resume.
    `git log <base>..HEAD`; each check the log claims appears in the timeline.
    Append `correction` rows for mismatches.
 5. Detection, instead of a guard: `run-state.sh scope <slug>` (protected or
-   outside-scope files changed); DANGER rows in the timeline; remote refs
+   outside-scope files changed); `timeline.py --danger <ids>` (forbidden git
+   commands; exit 1 when any); remote refs
    against the `start` hash, reported as "未观察到变化" or "有变化" (this
    cannot prove nothing was pushed). Report findings; never roll back on your
    own.
