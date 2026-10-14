@@ -36,9 +36,10 @@ Risks: <only ones that still hold after the plan>
 - Add stages only when ordering, integration risk, or irreversibility matters.
   Each stage states what works after it and how that is checked.
 - When the plan will run as several devflow-autorun contracts, give the stage
-  an id (P1), name each planned contract (p1-core, p1-web, …), and put the
-  checks only a human can do in a table under a heading containing 人工项:
-  `| 编号 | 内容 | 方法 |`. Arming registers these for the progress page.
+  an id (P1) and a 契约拆分 table, one row per contract:
+  `| 契约 | 写入范围 | 完成条件命令 | 预算 |`. Put the checks only a human can
+  do in a table under a heading containing 人工项: `| 编号 | 内容 | 方法 |`.
+  Arming builds each contract from its row; closeout hands the 人工项 table to the user.
 
 ## Architecture Section (only when needed)
 
