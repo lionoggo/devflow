@@ -8,7 +8,8 @@
 #
 # Usage: run-state.sh claim|check|caffeinate|release|scope <slug>
 #   claim       take the lease for this session ($CLAUDE_CODE_SESSION_ID, $CLAUDE_PID);
-#               refused while another live claude process holds it
+#               refused while another live claude process holds it; taking over a stale
+#               lease stops the previous owner's caffeinate
 #   check       per-round checks; exit 0 ok, 1 stop and report, 3 exactly one unlogged commit
 #               on top of the last logged one (prints its sha), 4 deadline passed
 #   caffeinate  start `caffeinate -i` until the deadline and record its pid in the lease
@@ -52,6 +53,8 @@ claim)
     owner=$(field "$lease" session 2>/dev/null); opid=$(field "$lease" pid 2>/dev/null)
     if [ "$owner" = "$me" ]; then echo "ok already held by this session"; exit 0; fi
     if is_claude "$opid"; then die "held by session $owner (claude pid $opid is alive); close it first"; fi
+    ocp=$(field "$lease" caffeinate_pid 2>/dev/null) # the dead owner's caffeinate would run to the deadline
+    if [ -n "$ocp" ] && ps -o comm= -p "$ocp" 2>/dev/null | grep -q caffeinate; then kill "$ocp" && echo "ok stopped the previous owner's caffeinate $ocp"; fi
     # Stale lease: rename is atomic, so only one taker wins.
     mv "$lock" "$lock.stale.$$" 2>/dev/null || die "lost the race for a stale lease; retry"
     rm -rf "$lock.stale.$$"

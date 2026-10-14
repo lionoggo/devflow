@@ -42,8 +42,12 @@ expect 1 "claim refused while claude alive" "$rs" claim demo
 # pid reused by a non-claude process -> takeover allowed
 tail -f /dev/null & pids+=($!); spid=$!
 sed -i '' "s/^pid: .*/pid: $spid/" .dflow/demo.lock/lease
+if command -v caffeinate >/dev/null; then
+    caffeinate -i -t 120 & oldc=$!; sed -i '' "s/^caffeinate_pid: .*/caffeinate_pid: $oldc/" .dflow/demo.lock/lease
+fi
 expect 0 "takeover when pid is not claude" "$rs" claim demo
 grep -q '^session: s1' .dflow/demo.lock/lease && ok || bad "lease not rewritten"
+if [ -n "${oldc:-}" ]; then sleep 0.3; kill -0 "$oldc" 2>/dev/null && { bad "previous owner's caffeinate left running"; kill "$oldc"; } || ok; fi
 
 # concurrent fresh claims: exactly one wins
 CLAUDE_CODE_SESSION_ID=s1 "$rs" release demo >/dev/null
