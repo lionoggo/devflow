@@ -7,13 +7,32 @@ pstack `how`, `why`. Principles: 以现状为准, 解释数字, 真实证据.
 1. Name the target and the question. Split it: **how** (what the code does,
    where things live, the runtime flow) or **why** (what forces shaped it).
    Vague target: state your best reading and go on.
-2. **How:** read the main path yourself, entry to effect. Tie each key claim
+2. **How.** Judge the size first.
+   - **Simple** (one module, one function, a narrow question): read the main
+     path yourself.
+   - **Complex** (a subsystem across many files or services, a cross-cutting
+     feature, a whole-project overview): split the question into 2–4 angles
+     that do not overlap (for example entry and flow, data and storage,
+     configuration and boundaries). In one message, start one read-only Claude
+     subagent per angle (the Explore agent type, model Opus or lower) and
+     give one more angle to `codex exec -s read-only` in the background, all
+     with `references/research-explorer-prompt.md`. Then you synthesize:
+     merge overlaps, settle every contradiction by reading the code yourself,
+     and read the main path yourself before stating it. Explorer findings are
+     leads, not evidence. Name which angle each explorer took, and write
+     "codex 未参与：<原因>" when it could not run.
+   When in doubt, take the simple path.
+   For either size: read the main path yourself, entry to effect. Tie each key claim
    to `path:line` taken from numbered output; otherwise cite file and symbol.
    Keep each claim's conditions (only when configured, fallback, default vs
    opt-in). When behavior depends on prompts, config, or environment, confirm
    it in a real run artifact.
 3. **Why:** build the anchor first: `git blame -L`, `git log --follow -p`,
    commit bodies, PR descriptions (`gh pr view`, read-only) and linked docs.
+   Then check every other source this session can read (issue tracker,
+   chat, long-form docs, error tracking, observability, through whatever
+   tools or MCP servers are connected), one read-only subagent per source
+   when there are several; record "无此来源" for each category with no tool.
    Code cannot prove its own intent; grade each rationale with
    `references/epistemics.md` and write 推测 where nothing written says it.
    A search that finds nothing is an answer; say what you searched.
