@@ -37,6 +37,7 @@
 | 约 70% 预算时停止派发，只落地已验证的 | `orchestrate.md` 第 1 步 | 照搬 | 用于无人值守的截止时间 |
 | worktree 清理：只删干净且已合并的，有未提交工作的先问 | `worktree-cleanup.md` | 照搬规则 | |
 | 状态存储 CLI（units、ledger、inbox、gates、frontier，约 2800 行） | `scripts/orch/` | 不搬 | 一张单元表加现有决策日志 |
+| 每个负责人都写自己的 decisions.tsv，不提交，随报告交回；协调者另有一份总日志 | `autopilot-full.md` 第 2 步、`orchestrate.md` "Store layout" | 改动 | worker 不单独写文件，把决策行放在报告里交回，由主会话追加进同一份日志；只有一个写入者，符合"先分离再串行" |
 | 云端 worker、子协调者、gt 堆栈、自动合并、多天程序 | 多处 | 不做 | 超出规模；推送和合并要先问 |
 
 ## 3. 方案
@@ -69,7 +70,7 @@
    - 写单元表 `.dflow/<slug>.units.tsv`（用点号，避开 `.dflow/<slug>-<name>` 这个受保护检查脚本的命名），列为 `id deps paths state base agent branch dispatched_at tries landed`，只由主会话写。
 2. **派发**：每个依赖都已落地的单元就是"就绪"单元。为它写任务说明（`references/unit-brief.md`），在单元表记下 `base`（当前 HEAD）和状态 `dispatched`，然后在一条消息里启动后台子 agent（`isolation: "worktree"`，`run_in_background: true`，模型 `sonnet`）。同时最多 3 路，完成一个补一个。
 3. **处理完成通知**（每到一个处理一个）：
-   1. 读 worker 报告：分支、HEAD、跑过的检查和输出、偏差。单元表记 `agent`（子 agent id）和 `branch`。
+   1. 读 worker 报告：分支、HEAD、跑过的检查和输出、偏差。单元表记 `agent`（子 agent id）和 `branch`。把报告里的决策行追加到本次运行的决策日志，phase 写单元 id，证据里加上 `agent-<id>`，让收尾时能对照到这个子 agent 的对话记录。
    2. `parallel.sh scope <slug> <id>`：分支相对 `base` 的改动只能在这个单元声明的路径内。越界就退回。
    3. `parallel.sh land <slug> <id>`：先确认工作区干净、`base` 是分支的祖先；再把 `base..branch` 的改动压成工作区里的未提交改动（`git cherry-pick -n`）。冲突时 `git cherry-pick --abort`（开始时工作区是干净的，所以不会丢别人的改动），报告冲突文件，以 1 退出。
    4. 主会话在主目录跑这个单元的检查，加上所有已完成阶段的条件，以及受保护的检查。通过就只 `git add` 单元路径，提交**一个**提交（提交信息写单元名），单元表记 `landed <sha>`，决策日志记一行，证据是这个 SHA；不通过就 `parallel.sh unland <slug> <id>`（恢复单元路径的暂存区和工作区，删除本次新增的文件），单元退回。
@@ -95,7 +96,9 @@
 验证     只跑仓库里已跟踪的检查命令；跑不了的写明原因，不要假装跑过
 时限     大约多久；到时交回已有结果
 禁止     push、rebase、merge、reset、stash、切换分支、改范围外文件、改受保护路径
-报告     状态、分支、HEAD、实际跑过的命令和输出、偏差、建议的后续
+报告     状态、分支、HEAD、实际跑过的命令和输出、偏差、建议的后续；
+         决策行：本单元里做过的分叉、换思路、放弃的做法，每行按决策日志的
+         六列写（ts phase decision why evidence result），证据指向提交或 path:line
 规则     提交信息格式 <type>(<scope>): <subject>；只提交通过检查的改动
 ```
 
