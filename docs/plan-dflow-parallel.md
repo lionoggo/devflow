@@ -1,6 +1,6 @@
 # 方案：dflow 并行实施
 
-> 状态：待用户批准（第 2 版，已按 codex 评审修订，见第 9 节）。日期 2026-10-14。worktree `devflow-dflow`，分支 `dflow`。
+> 状态：待用户批准（第 3 版，两轮 codex 评审均已处理，见第 9、10 节）。日期 2026-10-14。worktree `devflow-dflow`，分支 `dflow`。
 > pstack 来源（sparse clone 837067b）：`poteto-mode/playbooks/feature.md`（吞吐检查）、`orchestrate.md`、`autopilot-full.md`、`autopilot-stack.md`、`worktree-cleanup.md`、`scripts/orch/`、`scripts/worktree-audit.sh`、`principle-separate-before-serializing-shared-state`。
 > 实测（Claude Code 2.1.299，`claude -p`）：
 > - 子 agent 开 `isolation: "worktree"` 后，worktree 建在 `<仓库>/.claude/worktrees/agent-<id>`，分支 `worktree-agent-<id>`，从主目录当时的 HEAD 拉出；
@@ -65,17 +65,19 @@
 
 1. **准备**：
    - 用 `git rev-parse --git-path info/exclude` 找到 exclude 文件（在链接 worktree 里也正确），确认有 `.claude/worktrees/` 一行；
-   - 写单元表 `.dflow/<slug>-units.tsv`，列为 `id deps paths state base agent branch landed`，只由主会话写。
+   - 主目录必须干净（`git status --porcelain --untracked-files=all` 除 `.dflow/` 外为空）。用户在场时如果有未提交改动，列出文件，说明并行需要干净的工作区，改按顺序做；
+   - 写单元表 `.dflow/<slug>.units.tsv`（用点号，避开 `.dflow/<slug>-<name>` 这个受保护检查脚本的命名），列为 `id deps paths state base agent branch dispatched_at tries landed`，只由主会话写。
 2. **派发**：每个依赖都已落地的单元就是"就绪"单元。为它写任务说明（`references/unit-brief.md`），在单元表记下 `base`（当前 HEAD）和状态 `dispatched`，然后在一条消息里启动后台子 agent（`isolation: "worktree"`，`run_in_background: true`，模型 `sonnet`）。同时最多 3 路，完成一个补一个。
 3. **处理完成通知**（每到一个处理一个）：
    1. 读 worker 报告：分支、HEAD、跑过的检查和输出、偏差。单元表记 `agent`（子 agent id）和 `branch`。
    2. `parallel.sh scope <slug> <id>`：分支相对 `base` 的改动只能在这个单元声明的路径内。越界就退回。
-   3. `parallel.sh land <slug> <id>`：把 `base..branch` 的改动**压成工作区里的未提交改动**（`git cherry-pick -n`）。有冲突就恢复干净的工作区，报告冲突文件，以 1 退出。
-   4. 主会话在主目录跑这个单元的检查，加上所有已完成阶段的条件，以及受保护的检查。通过就提交**一个**提交（提交信息写单元名），单元表记 `landed <sha>`，决策日志记一行，证据是这个 SHA；不通过就还原这些路径（与无人值守"没进展就还原本轮改动"相同），单元退回。
-   5. 冲突或退回：用新的子 agent、基于新 HEAD 重做，任务说明附上失败原因。第二次仍失败，就改由主会话按顺序做，或标为死路。
+   3. `parallel.sh land <slug> <id>`：先确认工作区干净、`base` 是分支的祖先；再把 `base..branch` 的改动压成工作区里的未提交改动（`git cherry-pick -n`）。冲突时 `git cherry-pick --abort`（开始时工作区是干净的，所以不会丢别人的改动），报告冲突文件，以 1 退出。
+   4. 主会话在主目录跑这个单元的检查，加上所有已完成阶段的条件，以及受保护的检查。通过就只 `git add` 单元路径，提交**一个**提交（提交信息写单元名），单元表记 `landed <sha>`，决策日志记一行，证据是这个 SHA；不通过就 `parallel.sh unland <slug> <id>`（恢复单元路径的暂存区和工作区，删除本次新增的文件），单元退回。
+   5. 冲突或退回：`tries` 加 1，用新的子 agent、基于新 HEAD 重做，任务说明附上失败原因。第二次仍失败，就改由主会话按顺序做（在一步内改完并提交，期间到达的完成通知排队，提交后再处理），或标为死路。
+   6. **超时**：派发后超过任务说明时限的 2 倍仍没有完成通知，就按接手规则判断该单元（分支有提交就落地；没有就退回；有未提交改动就保留并报告），并计入 `tries`。
 4. **共享文件**：所有单元落地后，主会话统一修改共享文件，作为普通单元提交。
 5. **清理**：`parallel.sh cleanup <slug>`：
-   - 已落地单元：`git worktree remove --force`（只会删除被忽略的构建产物，已确认没有未提交的已跟踪改动），`git branch -D`；
+   - 已落地单元：先用 `git status --porcelain --untracked-files=all` 列出 worktree 里剩下的文件并写进输出，再 `git worktree remove --force`、`git branch -D`；
    - 未落地但有提交的：保留，报告分支名；
    - 有未提交的已跟踪改动的：保留，报告文件，不删除；
    - 只处理单元表里登记的 worktree，不碰其他 worktree。
@@ -99,6 +101,7 @@
 
 ### 3.5 和无人值守的关系
 
+- **任何一次唤醒**（完成通知或 `/loop`）都按 Round 执行，第 1 步先跑 `run-state.sh check`，非 0 就不落地。
 - 一轮可以派出多个后台子 agent，然后结束本轮。子 agent 完成时会唤醒会话（已实测）；动态 `/loop` 另外保留一个较长的兜底唤醒。
 - 有子 agent 在跑时，由 `/loop` 唤醒的轮次只处理已到的完成通知，不派发新单元，避免超过 3 路的上限。
 - "每轮结束工作区必须干净"仍成立：worker 在自己的 worktree 里改；主目录的未提交改动只在落地那一步短暂存在，同一步内提交或还原。
@@ -109,22 +112,24 @@
   - 没有提交：重新派发；
   - 有未提交改动：保留并报告，不删除。
 
-  会话被杀时本地子 agent 是否一起结束，实施第 0 步实测后写进规则。
+  会话被杀时本地子 agent 是否一起结束，实施第 0 步实测后写进规则；实测前的默认是：接手时把 `dispatched` 的单元视为可能仍在运行，等满 1 倍时限再按上面三种情况判断。
 
 ### 3.6 新增脚本 `scripts/parallel.sh`
 
 | 子命令 | 作用 |
 |---|---|
-| `overlap <slug>` | 读单元表，检查写入路径两两不相交（把 glob 展开到当前已跟踪文件，并比较 glob 前缀）；相交就列出并以 1 退出 |
-| `scope <slug> <id>` | 该单元分支相对其 `base` 的改动都在声明路径内；越界就列出并以 1 退出 |
-| `land <slug> <id>` | `git cherry-pick -n <base>..<branch>`，把改动放进工作区；冲突时恢复干净工作区，列出冲突文件，以 1 退出 |
+| `overlap <slug>` | 读单元表，检查写入路径两两不相交（把 glob 展开到当前已跟踪文件，并比较 glob 前缀），且都在清单 `allow` 内、与 `protect` 不相交；不满足就列出并以 1 退出 |
+| `scope <slug> <id>` | 先确认 `base` 是分支的祖先；再检查分支相对 `base` 的改动都在声明路径内；不满足就列出并以 1 退出 |
+| `land <slug> <id>` | 工作区不干净或 `base` 不是祖先就以 1 退出；否则 `git cherry-pick -n <base>..<branch>`；冲突时 `--abort`，列出冲突文件，以 1 退出 |
+| `unland <slug> <id>` | 恢复单元路径的暂存区和工作区，删除本次落地新增的文件 |
 | `cleanup <slug>` | 按 3.3 第 5 步处理单元表里登记的 worktree 和分支，输出每个的处理结果 |
 
-测试 `parallel-test.sh` 覆盖：不相交、相交、越界、干净落地、冲突后工作区恢复干净、清理时保留有未提交改动的 worktree、已落地单元的分支用 `-D` 删除、只处理登记过的 worktree。
+测试 `parallel-test.sh` 覆盖：不相交、相交、越出 `allow` 或碰到 `protect`、越界、`base` 不是祖先、干净落地、工作区不干净时拒绝落地、冲突后工作区恢复干净、`unland` 删除新增文件、清理时保留有未提交改动的 worktree 并列出未跟踪文件、已落地单元的分支用 `-D` 删除、只处理登记过的 worktree。
 
 `timeline.py` 改两处：
 - 传入会话 id 时，同时读取该会话 `subagents/` 下的所有对话记录；
-- 命令是调用 `parallel.sh land` 或 `cleanup` 时，不标危险。
+- 先从命令中删去 `parallel.sh land|cleanup <参数>` 这一段，再扫描剩下的部分，所以 `parallel.sh land x 1 && git push` 仍会被标危险（测试覆盖）；
+- 子 agent 记录的来源列用文件名里的 `agent-<id>`，不用会话 id。
 
 ## 4. 实施步骤
 
@@ -146,8 +151,8 @@
 | 新增 | `skills/dflow/scripts/parallel.sh`、`parallel-test.sh` |
 | 修改 | `skills/dflow/scripts/timeline.py`、`timeline-test.sh`：读取子 agent 记录；`parallel.sh` 的例外 |
 | 修改 | `skills/dflow/playbooks/build.md`：吞吐检查与建议；用户说"并行"时按 `references/parallel.md` 执行；回复加"并行"一行 |
-| 修改 | `skills/dflow/playbooks/unattended.md`：框定给出顺序和并行两种安排；"不会做"清单加 `parallel.sh` 例外；轮次和接手规则 |
-| 修改 | `skills/dflow/SKILL.md`：路由触发语加"并行"；"先问"清单加 `parallel.sh` 例外；子 agent 规则写明并行实施 |
+| 修改 | `skills/dflow/playbooks/unattended.md`：框定给出顺序和并行两种安排；"不会做"清单加 `parallel.sh` 例外；任何唤醒都按 Round 执行；接手规则；"开始"第 2 步改用 `git rev-parse --git-path info/exclude` |
+| 修改 | `skills/dflow/SKILL.md`：路由触发语加"并行"；"先问"清单加 `parallel.sh` 例外；子 agent 规则写明并行实施；Codex 宿主里说"并行"时回复不支持并按顺序做 |
 
 ## 6. 验收
 
@@ -203,3 +208,21 @@
 | 更简单方案 A：同目录并行、不建 worktree | 不采纳：多个单元在同一目录同时跑检查会互相干扰，各单元也看到彼此的半成品 |
 | 更简单方案 B：整个方案交给一个子 agent | 不采纳：只有隔离，没有并行，达不到目的 |
 | 更简单方案 C：每单元一个提交 | 采纳，即 P0 第 2 条的处理 |
+
+## 10. codex 评审处理（第 2 版）
+
+结论"修改后执行"：1 条 P0、5 条 P1、5 条 P2，没有方向性问题。按"最多两轮"不再做第三轮，全部采纳：
+
+| 意见 | 处理 |
+|---|---|
+| P0 落地失败时恢复工作区可能清掉用户改动；`cherry-pick -n` 会混入用户已暂存的内容 | 并行要求主目录干净；`land` 开头检查；冲突用 `--abort`；提交只 `git add` 单元路径；测试覆盖 |
+| P1 危险命令例外可被 `&& git push` 绕过 | 先删去例外片段再扫描，测试覆盖 |
+| P1 单元表名撞上受保护检查脚本的命名 | 改名 `.dflow/<slug>.units.tsv` |
+| P1 `base` 不是分支祖先时会带进无关历史 | `scope`、`land` 开头检查祖先关系 |
+| P1 worker 死掉时单元永远停在已派发 | 记派发时间，超过 2 倍时限按接手规则判断，计入重试 |
+| P1 完成通知唤醒的轮次是否先跑检查 | 任何唤醒都按 Round 执行，先跑 `check` |
+| P2 `worktree remove --force` 静默删未跟踪文件 | 删除前列出 |
+| P2 还原没有脚本 | 新增 `unland` |
+| P2 单元路径没对照 `allow`、`protect` | `overlap` 一并检查 |
+| P2 主会话按顺序补做和落地抢主目录 | 一步内改完并提交，期间的通知排队 |
+| P2 其他遗漏（exclude 路径、子 agent 来源标记、Codex 宿主、会话被杀前的默认） | 都写进对应位置 |
