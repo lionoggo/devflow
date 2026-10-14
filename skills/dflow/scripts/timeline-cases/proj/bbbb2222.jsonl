@@ -1,0 +1,4 @@
+{"type": "assistant", "timestamp": "2026-10-14T01:02:00Z", "sessionId": "bbbb2222", "message": {"content": [{"type": "tool_use", "id": "u1", "name": "Edit", "input": {"file_path": "src/a.py", "old_string": "x", "new_string": "y"}}]}}
+{"type": "user", "timestamp": "2026-10-14T01:02:01Z", "sessionId": "bbbb2222", "message": {"content": [{"type": "tool_result", "tool_use_id": "u1", "content": [{"type": "text", "text": "edited"}], "is_error": false}]}}
+{"type": "assistant", "timestamp": "2026-10-14T01:03:00Z", "sessionId": "bbbb2222", "message": {"content": [{"type": "tool_use", "id": "u2", "name": "Bash", "input": {"command": "git log --oneline -3"}}]}}
+{"type": "user", "timestamp": "2026-10-14T01:03:01Z", "sessionId": "bbbb2222", "message": {"content": [{"type": "tool_result", "tool_use_id": "u2", "content": "abc fix", "is_error": false}]}}

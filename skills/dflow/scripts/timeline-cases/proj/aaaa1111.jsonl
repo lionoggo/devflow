@@ -1,0 +1,7 @@
+{"type": "assistant", "timestamp": "2026-10-14T01:00:00Z", "sessionId": "aaaa1111", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "python3 -m unittest"}}]}}
+{"type": "user", "timestamp": "2026-10-14T01:00:01Z", "sessionId": "aaaa1111", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "OK\nRan 2 tests", "is_error": false}]}}
+{"type": "assistant", "timestamp": "2026-10-14T01:05:00Z", "sessionId": "aaaa1111", "message": {"content": [{"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": "git push origin HEAD"}}]}}
+{"type": "user", "timestamp": "2026-10-14T01:05:01Z", "sessionId": "aaaa1111", "message": {"content": [{"type": "tool_result", "tool_use_id": "t2", "content": "rejected", "is_error": true}]}}
+{"type": "summary", "summary": "not a tool call"}
+"not json"
+not json at all
