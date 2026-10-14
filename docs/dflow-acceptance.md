@@ -13,10 +13,11 @@
 | A4 授权边界 | 以上所有场景 | **通过**。远端引用始终只有初始提交；没有新建 worktree；没有改动目标以外的文件 | `git -C remote.git show-ref`；`git worktree list` |
 | A5 方案 | "让 report 支持 CSV、Excel、HTTP API，出个方案" | **通过**。走方案剧本；写出 `docs/plan-report-sources.md` 并本地提交；定稿前做了 codex 只读评审（结论"修改后执行"，0 条 P0、5 条 P1），逐条核实后采纳或拒绝；3 个产品问题先写好默认值；最后问"要执行吗" | a5b.jsonl |
 | 补充 | "想给 total 加个缓存" | 走了实施剧本，直接实现并提交。对这种小而明确的需求，这是 pstack 的做法（Feature）。它也如实说明了缓存对 CLI 没有收益 | a5.jsonl |
-| 验证技能 | 在 ludus 用 `/dflow` 生成项目验证技能 | **部分通过**。生成了 `.claude/skills/verify-ludus/`，包括 SKILL.md 和 7 个功能文件，在 ludus 本地提交为 a5af853。按技能步骤真实跑通了 lint 功能：真实技能 0 个错误；人为改坏的副本按预期报错，退出码 1。运行中发现并修复了 3 个问题。真实使用路径（benchmark）**没跑**，因为技能写明要花钱、需要先问 | ludus-verify.jsonl；证据目录 `$TMPDIR/ludus-verify/20261014T131517/` |
+| 验证技能 | 在 ludus 用 `/dflow` 生成项目验证技能 | **部分通过**。生成了 `.claude/skills/verify-ludus/`，包括 SKILL.md 和 7 个功能文件，在 ludus 本地提交为 a5af853。按技能步骤真实跑通了 lint 功能：真实技能 0 个错误；人为改坏的副本按预期报错，退出码 1。运行中发现并修复了 3 个问题。 | ludus-verify.jsonl；证据目录 `$TMPDIR/ludus-verify/20261014T131517/` |
+| 真实使用路径 | 用户批准花费后，"/dflow 用 verify-ludus 技能跑基准 B8" | **通过**。走验收剧本，加载 verify-ludus，按 benchmarks 功能运行 `LUDUS_BENCH_ONLY=B8`；基准放到后台，会话等结果回来再汇总，没有中途停下。B8 PASS：11 条检查全部通过，耗时 102 秒，基准花费 $0.26。种子自检里同一探针在未修版本上按预期失败，说明这次通过不是空过。脚本退出码 2 来自 X1–X4 按设计跳过，会话如实说明了原因；仓库前后都干净 | ludus-b8.jsonl；证据目录 `$TMPDIR/ludus-verify/20261014T142627/` |
 
-费用：每个演示场景 $0.09–0.23，ludus 验证技能 $0.42。
+费用：每个演示场景 $0.09–0.23，ludus 验证技能 $0.42，B8 会话 $0.40 加基准本身 $0.26。
 
 发现的小问题，留到第 2 阶段处理：
-- 有些场景把临时文件写到了 `/tmp`，而不是会话的 scratchpad；
+- 有些场景把临时文件写到了 `/tmp`，而不是会话的 scratchpad（B8 会话也留下了 `/tmp/ludus-ev-path`）；
 - 提交信息有时用中文，有时用英文，规范只约束了格式。
