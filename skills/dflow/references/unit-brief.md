@@ -7,8 +7,8 @@ a paragraph that still names goal, scope, verify, and report. From pstack
 
 ```text
 目标     <一句话，不看对话也能执行>
-准备     第一条命令，原样执行：git switch -C "$(git branch --show-current)" <base>
-         （新 worktree 可能从别的 HEAD 拉出；这一步把它对齐到 base，分支名保持不变；只在还没有任何改动时做）
+准备     先运行 git branch --show-current 得到分支名，再运行 git switch -C <这个分支名> <base>
+         （新 worktree 从仓库默认分支拉出，不一定是 base；这一步把它对齐到 base，分支名不变；只在还没有任何改动时做）
 范围     只能改：<globs>；不能改：<受保护路径和其他单元的路径>；当前目录就是你的 worktree，只在这里提交
 上下文   <相关文件>；<依赖单元的报告原文>（你看不到其他单元）
 验收     <能判对错的条件，每行一条>

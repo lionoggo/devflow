@@ -140,6 +140,14 @@ cleanup)
         git branch -D -q "$br" 2>/dev/null
         echo "ok removed $id ($br${wt:+, $wt})"
     done
-    git worktree prune; exit $bad ;;
+    git worktree prune
+    reg=$(awk -F'\t' 'NR > 1 { print $7 }' "$table")
+    printf '%s\n' "$(git worktree list --porcelain)" | awk '/^worktree /{w=substr($0,10)} /^branch /{print w"\t"substr($0,19)}' |
+    while IFS=$'\t' read -r w b; do
+        case $w in */.claude/worktrees/*) ;; *) continue ;; esac
+        printf '%s\n' "$reg" | grep -qxF "$b" && continue
+        echo "ORPHAN $w ($b): not in the unit table; left in place, $(git -C "$w" status --porcelain | wc -l | tr -d ' ') uncommitted path(s)"
+    done
+    exit $bad ;;
 *) usage ;;
 esac

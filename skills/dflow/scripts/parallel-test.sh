@@ -66,6 +66,7 @@ out=$("$ps" scope demo c); [ $? = 1 ] && echo "$out" | grep -q "not an ancestor"
 awk -F'\t' -v OFS='\t' -v b="$base" 'NR>1 && $1=="a"{$4="landed"} NR>1 && $1=="c"{$5=b} {print}' .dflow/demo.units.tsv > .dflow/x && mv .dflow/x .dflow/demo.units.tsv
 echo junk > "$t/wa/scratch.log"; echo edit >> "$t/wc/app/core.py"
 git worktree add -q -b other "$t/other" "$base"
+mkdir -p .claude/worktrees; git worktree add -q -b worktree-agent-zz .claude/worktrees/agent-zz "$base"
 out=$("$ps" cleanup demo); rc=$?
 [ $rc = 1 ] && ok || bad "cleanup exit $rc"
 [ ! -d "$t/wa" ] && ! git rev-parse -q --verify wa >/dev/null && ok || bad "landed worktree not removed"
@@ -73,6 +74,8 @@ echo "$out" | grep -q "scratch.log" && ok || bad "untracked file not listed: $ou
 [ -d "$t/wb" ] && echo "$out" | grep -q "KEEP b" && ok || bad "unlanded unit not kept: $out"
 [ -d "$t/wc" ] && echo "$out" | grep -q "KEEP c" && ok || bad "dirty unit not kept: $out"
 [ -d "$t/other" ] && git rev-parse -q --verify other >/dev/null && ok || bad "unregistered worktree touched"
+echo "$out" | grep -q "ORPHAN .*agent-zz" && [ -d .claude/worktrees/agent-zz ] && ok || bad "orphan not listed or removed: $out"
+echo "$out" | grep -q "ORPHAN .*other" && bad "non-.claude worktree listed as orphan" || ok
 
 expect 2 "usage" "$ps"
 expect 1 "bad slug" "$ps" overlap "../x"

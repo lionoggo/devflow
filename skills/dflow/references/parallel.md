@@ -69,13 +69,17 @@ host, say parallel is not supported there and work in order.
 ## Facts this relies on (measured with Claude Code 2.1.299)
 
 - A worktree subagent's tree is `<main repo>/.claude/worktrees/agent-<id>` on
-  branch `worktree-agent-<id>`, cut from the **main worktree's** HEAD, even
-  when you work in a linked worktree. The brief therefore has the worker
-  switch to `base` first; `scope` and `land` refuse a branch whose ancestor is
-  not `base`.
+  branch `worktree-agent-<id>`, cut from the repository's default branch tip,
+  not from your current HEAD (seen from a linked worktree and from a
+  `dflow/<slug>` branch alike). The brief therefore has the worker switch to
+  `base` first; `scope` and `land` refuse a branch whose ancestor is not
+  `base`. Command substitution (`$(...)`) in that step may be refused by the
+  tool, so the brief spells out two plain commands.
 - Background subagents wake the session when they finish.
-- Killing the session kills its subagents; their unchanged worktrees vanish.
-  A unit with commits keeps its branch.
+- Killing the session kills its subagents. Their worktrees may vanish or stay
+  behind locked and empty; a unit with commits keeps its branch.
+  `parallel.sh cleanup` lists unregistered worktrees under `.claude/worktrees/`
+  as ORPHAN and leaves them; name them in the reply.
 - Subagent transcripts live in `~/.claude/projects/<project>/<session
   id>/subagents/agent-<id>.jsonl`.
 
