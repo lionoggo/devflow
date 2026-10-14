@@ -8,12 +8,16 @@ pstack `how`, `why`. Principles: 以现状为准, 解释数字, 真实证据.
    where things live, the runtime flow) or **why** (what forces shaped it).
    Vague target: state your best reading and go on.
 2. **How.** Judge the size first, by measuring: list the files the answer
-   depends on and their line counts (`git ls-files | grep …`, `wc -l`).
+   depends on and their line counts (`git ls-files | grep …`, `wc -l`), then
+   write one line before reading further:
+   `规模：<n> 个文件，<m> 行，<语言或进程> → 简单 / 复杂`. The rule decides,
+   not a preference for fewer calls: the user asked for parallel exploration
+   on complex questions, so this split counts as the clean, independently
+   checkable kind that the global subagent rule allows.
    - **Simple**: at most 5 files and about 1000 lines, one language, one
      process. Read the main path yourself.
    - **Complex**: anything bigger, or the answer spans two or more languages,
-     processes, or services, or it is a whole-project overview. Say the
-     measurement in one line, then split the question into 2–4 angles
+     processes, or services, or it is a whole-project overview. Split the question into 2–4 angles
      that do not overlap (for example entry and flow, data and storage,
      configuration and boundaries). In one message, start one read-only Claude
      subagent per angle (the Explore agent type, model Opus or lower) and
