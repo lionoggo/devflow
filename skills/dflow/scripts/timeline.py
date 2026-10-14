@@ -20,7 +20,7 @@ import sys
 # A git subcommand the unattended playbook forbids, right after `git` and its global options.
 DANGER = re.compile(
     r"\bgit(?:\s+-[Cc]\s+\S+|\s+--?[\w-]+(?:=\S+)?)*\s+"
-    r"(push|merge|rebase|reset|clean|cherry-pick|switch|checkout\s+-[bB]|commit\s+[^|;&]*--amend|"
+    r"(push|merge|rebase|reset|clean|cherry-pick|switch(?!\s+-c\s+dflow/)|checkout\s+-[bB](?!\s+dflow/)|commit\s+[^|;&]*--amend|"
     r"stash(?!\s+list)|tag\s+\w+|branch\s+-[dDmMfc]|worktree\s+(?:add|remove|move|prune))\b")
 
 
@@ -39,11 +39,17 @@ def one_line(v, n=160):
     return (s.splitlines() or [""])[0][:n]
 
 
+def flat(v, n=1500):
+    """The whole value on one line: newlines become ' ⏎ ', so later lines of a command stay visible."""
+    s = str(v).strip().replace("\t", " ")
+    return " ⏎ ".join(l.strip() for l in s.splitlines() if l.strip())[:n]
+
+
 def describe(name, inp):
     for k in ("command", "file_path", "path", "pattern", "skill", "url", "query"):
         if k in inp:
-            return one_line(inp[k], 300)
-    return one_line(json.dumps(inp, ensure_ascii=False), 300)
+            return flat(inp[k])
+    return flat(json.dumps(inp, ensure_ascii=False))
 
 
 def rows(path):
@@ -61,16 +67,20 @@ def rows(path):
         sid = (e.get("sessionId") or os.path.basename(path)[:-6])[:8]
         for b in content:
             if b.get("type") == "tool_use":
+                inp = b.get("input") or {}
                 calls[b["id"]] = [e.get("timestamp", ""), sid, b.get("name", ""),
-                                  describe(b.get("name", ""), b.get("input") or {}), "pending", ""]
+                                  describe(b.get("name", ""), inp), "pending", "",
+                                  str(inp.get("command", ""))]
                 out.append(calls[b["id"]])
             elif b.get("type") == "tool_result" and b.get("tool_use_id") in calls:
                 c = calls[b["tool_use_id"]]
                 c[4] = "error" if b.get("is_error") else "ok"
                 c[5] = one_line(b.get("content", ""))
     for c in out:
-        if c[2] == "Bash" and DANGER.search(c[3]):
+        if c[2] == "Bash" and DANGER.search(c.pop()):  # scan the full command, not the shown text
             c[4] = "DANGER " + c[4]
+        elif len(c) == 7:
+            c.pop()
     return out
 
 

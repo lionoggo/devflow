@@ -62,7 +62,8 @@ On "开始":
 4. `$S/scripts/run-state.sh claim <slug>`, then `run-state.sh caffeinate <slug>`.
 5. Log `start` (`$S/scripts/log.sh .dflow/<slug>.tsv start …`): evidence holds
    the base SHA, a hash of `git ls-remote` (or the local remote's
-   `show-ref`), and the full `$CLAUDE_CODE_SESSION_ID`.
+   `show-ref`), the SHA-256 of each `.dflow/<slug>-<name>` check script (Git
+   does not see them), and the full `$CLAUDE_CODE_SESSION_ID`.
 6. Start the loop: Skill `loop` with args `/dflow 继续无人值守 <slug>`, no
    interval (dynamic). Then run the first round now.
 
@@ -164,8 +165,10 @@ tree is clean, and the first step on resume.
    `git log <base>..HEAD`; each check the log claims appears in the timeline.
    Append `correction` rows for mismatches.
 5. Detection, instead of a guard: `run-state.sh scope <slug>` (protected or
-   outside-scope files changed); `timeline.py --danger <ids>` (forbidden git
-   commands; exit 1 when any); remote refs
+   outside-scope files changed); each `.dflow/<slug>-<name>` check script
+   against its SHA-256 in the first `start` row; `timeline.py --danger <ids>`
+   (forbidden git commands, whole multi-line commands scanned; exit 1 when
+   any); remote refs
    against the `start` hash, reported as "未观察到变化" or "有变化" (this
    cannot prove nothing was pushed). Report findings; never roll back on your
    own.
