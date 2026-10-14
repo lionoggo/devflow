@@ -17,8 +17,11 @@ to this file's directory.
 2. Match the request to one playbook in the table below. "新任务" or "new
    task" means re-match; short follow-ups ("继续", "你来改", "好的") stay in
    the current playbook.
-3. Open a todo list whose first items are the playbook's steps, copied
-   verbatim. A step you skip stays in the list as `跳过：<原因>`.
+3. Make the route visible before any other work. Start the reply with one
+   line: `剧本：<name>（<step> → <step> → …>）`. If a todo tool exists
+   (TodoWrite, or TaskCreate found via ToolSearch), also put the playbook's
+   steps in it verbatim. A step you skip is named with `跳过：<原因>` in the
+   final reply.
 4. Run it. Read `principles/<name>.md` in full for any principle you apply.
 5. End with the playbook's reply, written per **Reply** below.
 
