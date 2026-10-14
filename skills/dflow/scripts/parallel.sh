@@ -99,13 +99,13 @@ scope)
 land)
     need_unit
     d=$(dirty); [ -z "$d" ] || { echo "FAIL working tree not clean; refusing to land:"; echo "$d"; exit 1; }
-    if git cherry-pick -n "$base..$branch" >/dev/null 2>.dflow/land-$slug-$uid.err; then
+    if err=$(git cherry-pick -n "$base..$branch" 2>&1 >/dev/null); then
         echo "ok landed $uid into the working tree; changed:"; git diff --cached --name-status
     else
         conflicts=$(git diff --name-only --diff-filter=U)
         git cherry-pick --abort 2>/dev/null || git reset -q --merge 2>/dev/null
         echo "FAIL conflict landing $uid; working tree restored. Conflicting files:"
-        echo "${conflicts:-$(cat .dflow/land-$slug-$uid.err)}"
+        echo "${conflicts:-$err}"
         exit 1
     fi ;;
 unland)

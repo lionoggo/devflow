@@ -21,7 +21,7 @@ import sys
 # A git subcommand the unattended playbook forbids, right after `git` and its global options.
 DANGER = re.compile(
     r"\bgit(?:\s+-[Cc]\s+\S+|\s+--?[\w-]+(?:=\S+)?)*\s+"
-    r"(push|merge|rebase|reset|clean|cherry-pick|switch(?!\s+-[cC]\s+(?:dflow/|worktree-agent-))|checkout\s+-[bB](?!\s+dflow/)|commit\s+[^|;&]*--amend|"
+    r"(push|merge|rebase|reset|clean|cherry-pick|switch(?!\s+-[cC]\s+(?:dflow/|worktree-agent-|"?\$\(git branch --show-current\)))|checkout\s+-[bB](?!\s+dflow/)|commit\s+[^|;&]*--amend|"
     r"stash(?!\s+list)|tag\s+\w+|branch\s+-[dDmMfc]|worktree\s+(?:add|remove|move|prune))\b")
 
 

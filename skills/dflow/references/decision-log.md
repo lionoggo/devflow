@@ -26,9 +26,13 @@ any attended work with two or more stages or expected to run over an hour
      decision or action, every evidence pointer resolves and shows what the
      row claims, and every pivot or abandoned approach that shaped the work
      has a row. Fix gaps with new rows, never by editing.
-  3. Cross-model review of the trail (`SKILL.md` **Cross-model review**): give
-     the other model the log, the timeline, and `git log -p <base>..HEAD`; ask
+  3. `python3 -I scripts/timeline.py --danger <the same session ids>`: list
+     every flagged command (subagents included) in the reply, each with
+     whether it was legitimate and why; "无" when there are none.
+  4. Cross-model review of the trail (`SKILL.md` **Cross-model review**): give
+     the other model the log, the timeline file as written (never trimmed),
+     and `git log -p <base>..HEAD`; ask
      for decisions with thin evidence, checks claimed without a run, choices
      risky in hindsight, and what a quick read would miss.
-  4. End the reply with `**需要你注意**（审查：<model> / 未审查：<原因>）` and
+  5. End the reply with `**需要你注意**（审查：<model> / 未审查：<原因>）` and
      its flags, each pointing at a row or a moment. "无" is a valid list.
