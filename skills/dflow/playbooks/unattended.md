@@ -120,10 +120,9 @@ option is picked (it only calls or combines the defaulted units) does not
 depend on the gate; do it normally. A unit that needs a forbidden action is never done
 on a default.
 
-**Log** rows: phases `start round gate default dead stage-done side blocked
-pause close correction`; append only, fix mistakes with a `correction` row;
-decision points, not every command; at least one row per round; plain words
-per `references/unslop.md`.
+**Log** per `references/decision-log.md`, with phases `start round gate
+default dead stage-done side blocked pause close correction`; at least one
+row per round.
 
 **Notify** with PushNotification only when a `gate` row is written ("需要你
 定：<问题>，已先做别的 / 已按默认 <值> 处理") and when the run stops
