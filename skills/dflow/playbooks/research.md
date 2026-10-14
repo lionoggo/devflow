@@ -27,6 +27,9 @@ pstack `how`, `why`. Principles: 以现状为准, 解释数字, 真实证据.
      and read the main path yourself before stating it. Explorer findings are
      leads, not evidence. Name which angle each explorer took, and write
      "codex 未参与：<原因>" when it could not run.
+   The user's words override the size verdict: "深入调研" or "找问题" means
+   complex at any size; "简单讲讲" means simple at any size. Say which one
+   applied in the size line.
    For either size: read the main path yourself, entry to effect. Tie each key claim
    to `path:line` taken from numbered output; otherwise cite file and symbol.
    Keep each claim's conditions (only when configured, fallback, default vs
