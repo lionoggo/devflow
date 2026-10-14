@@ -8,7 +8,10 @@ result without stopping.** From devflow-impl and pstack `feature`. Principles:
    acceptance labels; without a plan, derive A1, A2… from the request and mark
    them derived), and the approach. Then start; do not wait.
 2. Name the data shape the change works on before writing logic, and where it
-   lives in the current code. When the change touches a contract others can
+   lives in the current code. When the change adds a module, a type, or a
+   public interface, or reshapes code two or more modules call, run
+   `references/sketch.md` first (usage, two shapes, red flags, then fill).
+   When the change touches a contract others can
    observe (`SKILL.md` **After any change** step 3), run
    `references/impact.md` before editing and say so in the route line.
    Changing an interface inside the repo: migrate every caller in the same
@@ -23,7 +26,9 @@ result without stopping.** From devflow-impl and pstack `feature`. Principles:
 5. Preserve unrelated dirty work; never stage it. Reuse existing checks before
    adding a permanent test; add one only for a named, credible regression.
 6. Follow the plan's stages in order; each stage's check passes before
-   dependent work starts. When a stage remains and the user asked for the whole
+   dependent work starts. Work with two or more stages, or expected to run
+   over an hour, keeps a decision log per `references/decision-log.md` and
+   ends with its audit and review. When a stage remains and the user asked for the whole
    plan, continue into it.
 7. Finish with 验收 (`playbooks/verify.md`) for user-visible results; an
    end-to-end promise needs an end-to-end observation. Then `SKILL.md`
@@ -43,4 +48,6 @@ give it the scope, the data shape, and the check; review its diff yourself.
 - 改动的已有测试：<哪个测试的预期变了 → 为什么；没有就省略>
 - 我做的选择：<选择 → 怎么改回>
 - 下一步：<剩余阶段或未覆盖项；没有就省略>
+- 日志：<.dflow/<slug>.tsv；没有决策日志就省略>
+**需要你注意**（审查：<model> / 未审查：<原因>）<只在有决策日志时>
 ```

@@ -127,10 +127,13 @@ path in the reply.
 - write to an external system (tickets, chat, releases, deploys);
 - edit files outside the task's goal, including global rule files.
 
-**Subagents** only when they cut total cost; default Opus or lower.
-**Cross-model review** runs by default at four points: before a plan is
-final, when a fix fails a second time, at an unattended closeout, and in the
-评审 playbook. Elsewhere only on request. From Claude use
+**Subagents** only when they cut total cost or split cleanly into
+independently checkable parts (explorers in a complex 调研 are one such case);
+default Opus or lower. You review and verify their results yourself.
+**Cross-model review** runs by default at five points: before a plan is
+final, when a fix fails a second time, in the 评审 playbook, at the end of
+any work that kept a decision log (including every unattended closeout), and
+as one explorer in a complex 调研. Elsewhere only on request. From Claude use
 `codex exec -s read-only`; from Codex use a read-only Claude session
 (`claude -p --permission-mode plan`). If the other model is unavailable, say
 "未审查：<原因>"; never substitute a self-review.
