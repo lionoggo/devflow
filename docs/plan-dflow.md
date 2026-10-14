@@ -146,7 +146,7 @@ dflow 的核心规则因此是：**可撤销的工作直接做完再报告；不
    | 提交与发布 | devflow-commit 的安全规则；pstack opening-a-pr 的正文模板、babysit、watch-pr、bugbot 分诊；push 和开 PR 先问 |
    | 调优 | pstack correct（修正层级、"出现两次才算一类"、证明新检查能在过去的错误上失败）、reflect 的筛选标准、authoring-a-skill |
 
-9. **无人值守**：以 `docs/plan-unattended.md` 为底稿，按第 3 组报告修订后并入 `playbooks/unattended.md`：
+9. **无人值守**（详细方案见 `docs/plan-dflow-stage3.md`，以它为准）：以 `docs/plan-unattended.md` 为底稿，按第 3 组报告修订后并入 `playbooks/unattended.md`：
    - 完成条件可以是有序阶段，直接取自批准方案的阶段；
    - 死路按单元判定：一个单元换过思路仍走不通，就标为死路，转去做别的单元；所有剩余单元都走不通才停；
    - 只有用户能做的决定：先做不依赖它的单元；实在没有可做的，才按默认推进，提交信息标 `default:`；

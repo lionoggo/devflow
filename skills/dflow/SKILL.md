@@ -38,7 +38,7 @@ Do not load any `devflow-*` skill inside a dflow session.
 | 评审 | Review a plan or code, compare two approaches | `playbooks/review.md` |
 | 实施 | Build from an approved plan, or "你来改" | `playbooks/build.md` |
 | 验收 | Verify, 验收, real end-to-end checks | `playbooks/verify.md` |
-| 无人值守 | "我要离开", "去睡了", "跑到…为止", "别停" | `playbooks/unattended.md` |
+| 无人值守 | "我要离开", "去睡了", "跑到…为止", "别停", "无人值守"; "继续无人值守 <slug>"; "暂停" during a run | `playbooks/unattended.md` |
 | 交接 | A prompt for a new session or another agent | `playbooks/handoff.md` |
 | 进展 | Where things are, what is next, why it stopped | `playbooks/status.md` |
 | 周报 | Summarize work over a period from Git | `playbooks/report.md` |
