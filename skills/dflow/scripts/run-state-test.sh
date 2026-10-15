@@ -64,13 +64,19 @@ cp "$t/m" .dflow/demo.md
 # dirty tree of unknown origin
 echo x > src/new.py; expect 1 "dirty tree" "$rs" check demo; rm src/new.py
 
-# exactly one unlogged commit -> exit 3; logged -> ok; two unlogged -> 1
+# unlogged commits -> exit 3 listing each; logged (any position in the row) -> ok; HEAD behind -> 1
 echo b >> src/a.py; git commit -qam one; c1=$(git rev-parse HEAD)
 expect 3 "one unlogged commit" "$rs" check demo
 "$here/log.sh" .dflow/demo.tsv round "a" "b" "commit $c1" ok
 expect 0 "logged commit" "$rs" check demo
-echo c >> src/a.py; git commit -qam two; echo d >> src/a.py; git commit -qam three
-expect 1 "two unlogged commits" "$rs" check demo
+echo c >> src/a.py; git commit -qam two; c2=$(git rev-parse HEAD); echo d >> src/a.py; git commit -qam three; c3=$(git rev-parse HEAD)
+out=$("$rs" check demo); [ $? = 3 ] && ok || bad "two unlogged exit: $out"
+[ "$(echo "$out" | grep '^UNLOGGED' | tr '\n' ' ')" = "UNLOGGED $c2 UNLOGGED $c3 " ] && ok || bad "two unlogged listing: $out"
+"$here/log.sh" .dflow/demo.tsv round "a" "b" "commit ${c2:0:7}; commit ${c3:0:7}" ok
+expect 0 "two commits in one row" "$rs" check demo
+"$here/log.sh" .dflow/demo.tsv correction "a" "b" "commit ${c1:0:7}" ok
+expect 0 "older commit logged last" "$rs" check demo
+git reset -q --hard "$c1^"; expect 1 "HEAD behind logged commit" "$rs" check demo
 git reset -q --hard "$c1"
 
 # wrong branch

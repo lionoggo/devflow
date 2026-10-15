@@ -29,7 +29,10 @@ host, say parallel is not supported there and work in order.
 
 1. `$S/scripts/parallel.sh prepare <slug>` (needs a clean tree: with the
    user's uncommitted changes present, list them, say parallel needs a clean
-   tree, and work in order). Fill `.dflow/<slug>.units.tsv`: `id deps paths
+   tree, and work in order). Worktrees sit inside the repo at
+   `.claude/worktrees/`, and lint and test runners that read only
+   `.gitignore` will scan them: check that each check command skips it (as
+   for `.dflow/` in the frame) before dispatch. Fill `.dflow/<slug>.units.tsv`: `id deps paths
    state base agent branch dispatched_at tries landed`; you are its only
    writer. Then `parallel.sh overlap <slug>`; fix the split until it passes.
 2. **Dispatch** every ready unit (its deps landed): write its brief from
@@ -52,7 +55,10 @@ host, say parallel is not supported there and work in order.
       paths, commit once, set `landed <sha>`, log it. Fail:
       `parallel.sh unland <slug> <id>`, send the unit back.
    5. Sent back: `tries`+1, a fresh subagent from the new HEAD with the reason
-      in its brief. Never resume the old one. A second failure: do it
+      in its brief. Never resume the old one for a sent-back unit. A worker
+      that stopped because of a usage limit or an API error (not its work)
+      is not sent back: after the limit resets, resume that same agent with
+      SendMessage (its worktree keeps the progress), no try counted. A second failure: do it
       yourself in order (edit and commit in one step; completions that
       arrive meanwhile wait), or mark it dead.
    6. No completion after twice the brief's time box: treat it as in a

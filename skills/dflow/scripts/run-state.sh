@@ -10,8 +10,8 @@
 #   claim       take the lease for this session ($CLAUDE_CODE_SESSION_ID, $CLAUDE_PID);
 #               refused while another live claude process holds it; taking over a stale
 #               lease stops the previous owner's caffeinate
-#   check       per-round checks; exit 0 ok, 1 stop and report, 3 exactly one unlogged commit
-#               on top of the last logged one (prints its sha), 4 deadline passed
+#   check       per-round checks; exit 0 ok, 1 stop and report, 3 commits after the last logged
+#               one that no row names (one "UNLOGGED <sha>" line each, oldest first), 4 deadline passed
 #   caffeinate  start `caffeinate -i` until the deadline and record its pid in the lease
 #   release     stop the recorded caffeinate (only if that pid is still caffeinate), drop the lease
 #   scope       list files changed base..HEAD that are protected or outside allow; exit 1 if any
@@ -68,17 +68,16 @@ check)
     [ "$br" = "$(field "$man" branch)" ] && echo "ok branch $br" || die "on branch $br, expected $(field "$man" branch)"
     dirty=$(git -C "$root" status --porcelain --untracked-files=all | grep -v ' \.dflow/' || true)
     [ -z "$dirty" ] && echo "ok clean" || { echo "FAIL uncommitted changes of unknown origin:"; echo "$dirty"; exit 1; }
-    last=$(awk -F'\t' '{ if (match($5, /commit [0-9a-f]{7,40}/)) s = substr($5, RSTART + 7, RLENGTH - 7) } END { print s }' "$log" 2>/dev/null)
+    logged=$(awk -F'\t' '{ s = $5; while (match(s, /commit [0-9a-f]{7,40}/)) { print substr(s, RSTART + 7, RLENGTH - 7); s = substr(s, RSTART + RLENGTH) } }' "$log" 2>/dev/null)
+    last=$(printf '%s\n' "$logged" | tail -1)
     [ -n "$last" ] || last=$(field "$man" base)
     last=$(git -C "$root" rev-parse --verify -q "$last^{commit}") || die "logged commit not found"
     head=$(git -C "$root" rev-parse HEAD)
     dl=$(epoch "$(field "$man" deadline)") || die "bad deadline"
-    if [ "$head" != "$last" ]; then
-        if [ "$(git -C "$root" rev-parse -q --verify "HEAD^" 2>/dev/null)" = "$last" ]; then
-            echo "UNLOGGED $head"; exit 3
-        fi
-        die "HEAD $head is not the last logged commit $last"
-    fi
+    git -C "$root" merge-base --is-ancestor "$last" HEAD || die "HEAD $head does not contain the last logged commit $last"
+    unl=$(git -C "$root" rev-list --reverse "$last..HEAD" | while read -r c; do
+        printf '%s\n' "$logged" | awk -v c="$c" 'NF && index(c, $0) == 1 { f = 1 } END { exit !f }' || echo "$c"; done)
+    if [ -n "$unl" ]; then printf 'UNLOGGED %s\n' $unl; exit 3; fi
     echo "ok head $head"
     [ "$(date -u +%s)" -lt "$dl" ] && echo "ok before deadline" || { echo "DEADLINE passed"; exit 4; } ;;
 caffeinate)

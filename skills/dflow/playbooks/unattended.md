@@ -25,13 +25,22 @@ can run.
    add a checkable one. If a cheaper implementation that defeats the intent
    would also pass, add a condition that tells them apart. Say what counts as
    progress: by default "one unit's check passes and no finished condition
-   regresses"; for a count or timing condition, name the metric.
+   regresses"; for a count or timing condition, name the metric. Read each
+   baseline against its expected result: anything it shows that the planned
+   work will not change (a test that always skips, a failure from the
+   environment) means the wording is wrong; fix it here, not after "开始".
 2. **Units**: from the plan or the goal, riskiest first, with dependencies and
    which are independent.
 3. **Branch**: on a clean tree, `dflow/<slug>` from HEAD. A dirty tree: list
    the files and stop; never clean or stash.
 4. **Paths**: allowed to write (globs), and protected (every test, sample,
    and script the conditions use). A needed edit outside them is a gate.
+   A protected test whose asserted facts the plan must change (a table
+   list, a snapshot, a route count) goes to step 6 now, not to a gate at
+   night. Check that each condition command skips `.dflow/` (scratch files
+   live there, and tools that read only `.gitignore` will lint or test
+   them); if not, the ignore goes into the tool's config as the first
+   commit when that file is in `allow`, otherwise into step 6.
 5. **Will not do**: push, merge, rebase, reset, stash, clean, cherry-pick,
    amend; switch or delete branches, tags, worktrees; edit protected paths;
    write to outside systems. The one exception: in a parallel run,
@@ -84,9 +93,9 @@ dispatches nothing new.
 
 1. `$S/scripts/run-state.sh check <slug>`:
    - exit 0: go on;
-   - exit 3 (`UNLOGGED <sha>`): the last round committed but did not log.
-     Rerun its checks; pass, log the row with `commit <sha>`; fail,
-     `git revert --no-edit <sha>` and log it as a no-progress round;
+   - exit 3 (`UNLOGGED <sha>` lines): commits no row names. Rerun the
+     checks; pass, log one row naming each as `commit <sha>`; fail,
+     `git revert --no-edit` them newest first and log a no-progress round;
    - exit 4: deadline passed, go to **Close**;
    - exit 1 with "lease held by" another session: stop your loop, write
      nothing;
@@ -121,7 +130,9 @@ dispatches nothing new.
 11. Go to **Close** when every condition passes, the deadline has passed, or
     every remaining unit is done, dead, or gated with nothing independent
     left. A plateau is not a stop: pivot. Never relax or reinterpret a
-    condition.
+    condition. One that turns out wrong (no correct implementation can pass
+    it): log a `gate` with the corrected wording as its default and keep
+    reporting the original; never edit the manifest's conditions yourself.
 
 **Gates** (a product or preference call no experiment settles, or a unit that
 needs a "will not do" action): log `gate` with question, options, default,

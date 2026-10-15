@@ -137,7 +137,9 @@ default Opus or lower. You review and verify their results yourself.
 final, when a fix fails a second time, in the 评审 playbook, at the end of
 any work that kept a decision log (including every unattended closeout), and
 as one explorer in a complex 调研. Elsewhere only on request. From Claude use
-`codex exec -s read-only`; from Codex use a read-only Claude session
+`codex exec -s read-only`, the prompt either on stdin or as an argument
+with `</dev/null` (otherwise it waits on stdin and a background run hangs);
+from Codex use a read-only Claude session
 (`claude -p --permission-mode plan`). If the other model is unavailable, say
 "未审查：<原因>"; never substitute a self-review.
 
