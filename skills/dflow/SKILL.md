@@ -1,6 +1,6 @@
 ---
 name: dflow
-description: "The single entry for development work: routes a goal to a playbook (teach, research, debug, plan, review, build, verify, impact, prototype, polish, unattended, handoff, status, report, ship, tune), works without blocking on reversible steps, and closes with evidence. Only when the user names dflow (/dflow or $dflow)."
+description: "The single entry for development work: routes a goal to a playbook (teach, research, debug, plan, review, build, verify, impact, prototype, polish, unattended, handoff, status, retro, report, ship, tune), works without blocking on reversible steps, and closes with evidence. Only when the user names dflow (/dflow or $dflow)."
 disable-model-invocation: true
 ---
 
@@ -41,6 +41,7 @@ Do not load any `devflow-*` skill inside a dflow session.
 | 无人值守 | "我要离开", "去睡了", "跑到…为止", "别停", "无人值守"; "继续无人值守 <slug>"; "暂停" during a run | `playbooks/unattended.md` |
 | 交接 | A prompt for a new session or another agent | `playbooks/handoff.md` |
 | 进展 | Where things are, what is next, why it stopped | `playbooks/status.md` |
+| 复盘 | "复盘", "昨晚做了什么", "审一下这次运行": review a run that kept a decision log | `playbooks/retro.md` |
 | 周报 | Summarize work over a period from Git | `playbooks/report.md` |
 | 提交与发布 | Commit, split commits, open or follow a PR | `playbooks/ship.md` |
 | 调优 | Change a skill, AGENTS.md or CLAUDE.md, or "make this mistake impossible" | `playbooks/tune.md` |
@@ -133,10 +134,10 @@ path in the reply.
 independently checkable parts (explorers in a complex 调研, and workers in
 a parallel 实施 the user asked for, are such cases);
 default Opus or lower. You review and verify their results yourself.
-**Cross-model review** runs by default at five points: before a plan is
+**Cross-model review** runs by default at six points: before a plan is
 final, when a fix fails a second time, in the 评审 playbook, at the end of
-any work that kept a decision log (including every unattended closeout), and
-as one explorer in a complex 调研. Elsewhere only on request. From Claude use
+any work that kept a decision log (including every unattended closeout), in
+复盘, and as one explorer in a complex 调研. Elsewhere only on request. From Claude use
 `codex exec -s read-only`, the prompt either on stdin or as an argument
 with `</dev/null` (otherwise it waits on stdin and a background run hangs);
 from Codex use a read-only Claude session

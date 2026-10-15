@@ -25,9 +25,10 @@ pstack `correct`, `reflect`, and `authoring-a-skill`. Principles: 结构化教�
    `~/.claude/settings.json`) and anything outside the goal are ask-first:
    show the exact change and wait. Repo files in scope: edit and commit
    locally.
-6. Reflect on a session (user says "复盘"): list candidate lessons, drop
-   one-offs and anything already covered, and route each kept one to a level
-   from step 2. Apply repo-scoped ones; propose global ones.
+6. Reflect on a session (user says "总结教训", or 复盘 hands lessons over):
+   list candidate lessons, drop one-offs and anything already covered, and
+   route each kept one to a level from step 2. Apply repo-scoped ones;
+   propose global ones.
 
 **Reply:**
 

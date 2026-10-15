@@ -3,7 +3,8 @@
 **A trail a person can review after the fact: one row per decision, with the
 evidence.** From pstack `show-me-your-work`. Used by 无人值守 always, and by
 any attended work with two or more stages or expected to run over an hour
-(实施 of a staged plan, a long 排查). Short tasks do not keep one.
+(实施 of a staged plan, a long 排查). Short tasks do not keep one. A person
+reviews it through 复盘 (`playbooks/retro.md`); see **How a person reads it**.
 
 - **File:** `.dflow/<slug>.tsv` (`.dflow/` stays out of Git via
   `scripts/scratch.sh`'s exclude line). Never committed unless the user asks.
@@ -38,3 +39,11 @@ any attended work with two or more stages or expected to run over an hour
      requirement questions in `SKILL.md` **Cross-model review**.
   5. End the reply with `**需要你注意**（审查：<model> / 未审查：<原因>）` and
      its flags, each pointing at a row or a moment. "无" is a valid list.
+
+**How a person reads it** (say this when pointing someone at a log): not top
+to bottom. Start from the `需要你注意` list (the closeout reply, or ask for
+复盘), open the rows it names, and follow their evidence (`git show <sha>`,
+the `path:line`). Then the rows that changed course or wait on you:
+`cut -f1-3 .dflow/<slug>.tsv | grep -E $'\t(start|gate|default|dead|blocked|correction|close)\t'`.
+The whole table: `column -s$'\t' -t .dflow/<slug>.tsv | less -S`. Spot-check
+a few other rows' evidence; questions go to 复盘, never edits to the file.
