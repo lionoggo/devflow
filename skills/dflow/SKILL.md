@@ -51,10 +51,12 @@ Do not load any `devflow-*` skill inside a dflow session.
 
 Pick by the output the user wants: a list of findings is 评审; an
 explanation is 讲解 or 调研; variants to look at is 原型; an executable plan
-is 方案. No match: treat it as 方案 and frame the goal and its done check
-first. A
-playbook file that does not exist yet: say so in one line, then work by the
-rules in this file.
+is 方案; how a logged run's decisions hold up is 复盘, where things stand now
+is 进展. No match: treat it as 方案 and frame the goal and its done check
+first. "记决策日志" is not a playbook: it adds a decision log
+(`references/decision-log.md`) to whichever playbook the rest of the request
+matches, or to the current one. A playbook file that does not exist yet: say
+so in one line, then work by the rules in this file.
 
 ## Never block on reversible work
 
