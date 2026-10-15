@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for slop-check.sh: positive/negative corpus, code fences, usage errors,
-# and that references/unslop.md keeps every pstack rule number.
+# that references/unslop.md keeps every pstack rule number, and that dflow's own prose is clean.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 chk="$here/slop-check.sh"; cases="$here/slop-check-cases"
@@ -31,6 +31,13 @@ ref="$here/../references/unslop.md"
 have=$(grep -oE '^[0-9]+\. \*\*' "$ref" | grep -oE '^[0-9]+' | sort -n | tr '\n' ' ')
 for n in 3 5 7 8 9 10 11 12 13 14 15 16 17 18 19 20 22 23 24 25 26 27 28 29 30 31 32 33; do
     case " $have" in *" $n "*) ok ;; *) bad "unslop.md is missing pstack rule $n" ;; esac
+done
+
+# dflow's own prose follows its rules; unslop.md quotes the patterns it bans, so it is exempt.
+skill="$here/.."
+for f in "$skill"/SKILL.md "$skill"/playbooks/*.md "$skill"/references/*.md "$skill"/principles/*.md "$skill"/../dflow-report/SKILL.md; do
+    [ "$f" = "$skill/references/unslop.md" ] && continue
+    hits=$("$chk" "$f"); [ $? = 0 ] && ok || bad "slop in dflow's own text: $hits"
 done
 
 echo "slop-check-test: $pass passed, $fail failed (positive cases: $en English, $zh Chinese)"

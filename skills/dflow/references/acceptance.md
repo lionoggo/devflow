@@ -23,7 +23,7 @@ verification method | evidence | result
   to prove an existing result. For a new technical observation, keep it as a
   note if it can fail while the user result still completes safely.
 - A criterion is invalid only when based on a disproven fact, unverifiable as
-  written, or superseded by newer user intent — and even then the user
+  written, or superseded by newer user intent; and even then the user
   decides. Missing implementation, hard or expensive verification, or an
   unavailable environment does not make a criterion invalid.
 - One evidence source may cover several criteria. Logs support evidence but

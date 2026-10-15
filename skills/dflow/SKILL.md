@@ -27,6 +27,13 @@ to this file's directory.
 
 Do not load any `devflow-*` skill inside a dflow session.
 
+**Host.** Claude Code runs every playbook. In Codex: 无人值守 is not
+available (`scripts/run-state.sh` needs `CLAUDE_CODE_SESSION_ID`, and there
+is no `loop`), so say so and offer to frame it for a Claude Code session;
+"并行" runs in order (`references/parallel.md`); `scripts/timeline.py` reads
+only Claude Code transcripts, so a decision log's timeline checks are 未核实
+there; cross-model review uses `claude -p`.
+
 ## Playbooks
 
 | Playbook | When | File |

@@ -63,19 +63,19 @@ the section is required.
 
 Check these before calling a plan ready; mention only the ones that fail:
 
-1. **Closure** — does every promised result have a chain from cause/mechanism
+1. **Closure**: does every promised result have a chain from cause/mechanism
    to observable evidence, with no required part moved into non-goals or risks?
-2. **Vertical slice** — is there one smallest end-to-end path that works first?
+2. **Vertical slice**: is there one smallest end-to-end path that works first?
    Is every extra backend, mode, adapter, or reusable API justified by a
    current need rather than symmetry or future reuse?
-3. **Owners** — does every new or changed boundary have a real owner, entry
+3. **Owners**: does every new or changed boundary have a real owner, entry
    point, contract, and failure behavior in live code? A filename or phrase is
    not an owner; claimed reuse must be checked against the current contract.
-4. **Claim strength** — does the evidence prove the strongest claim? Startup
+4. **Claim strength**: does the evidence prove the strongest claim? Startup
    proves boot, file existence proves materialization, not consumption. For a
    critical invariant, could a cheaper violating implementation still pass?
    If so, add the cheapest distinguishing evidence.
-5. **Integration** — would completing every stage produce one runnable result,
+5. **Integration**: would completing every stage produce one runnable result,
    not disconnected parts? Cross-module or user-facing work turns its
    end-to-end path into E-items run on the final integrated state.
 
