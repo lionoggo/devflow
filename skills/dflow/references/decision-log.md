@@ -21,8 +21,10 @@ reviews it through 复盘 (`playbooks/retro.md`); see **How a person reads it**.
   evidence holds the full `$CLAUDE_CODE_SESSION_ID`. Use `start` for nothing
   else.
 - **Before the final reply:**
-  1. Build the timeline: `python3 -I scripts/timeline.py <session ids from the
-     start rows>` into a `scripts/scratch.sh` directory.
+  1. Build the timeline: `python3 -I scripts/timeline.py --say <session ids
+     from the start rows>` into a `scripts/scratch.sh` directory. `--say`
+     keeps what the agent and the user said beside the calls, so a stated
+     reason, a "跑过了", or "你同意了" can be checked against what happened.
   2. Audit this run's rows against it and `git log`: every row is a real
      decision or action, every evidence pointer resolves and shows what the
      row claims, and every pivot or abandoned approach that shaped the work
@@ -33,10 +35,11 @@ reviews it through 复盘 (`playbooks/retro.md`); see **How a person reads it**.
   4. Cross-model review of the trail (`SKILL.md` **Cross-model review**): give
      the other model the log, the timeline file as written (never trimmed),
      and `git log -p <base>..HEAD`, plus the plan and requirement docs when
-     the work implements one; ask
-     for decisions with thin evidence, checks claimed without a run, choices
-     risky in hindsight, what a quick read would miss, and the two
-     requirement questions in `SKILL.md` **Cross-model review**.
+     the work implements one; ask for decisions with thin evidence, checks
+     claimed without a run (in the log or in what the agent said), approvals
+     the main session credits to the user with no matching user line, choices
+     risky in hindsight, what a quick read would miss, and the two requirement
+     questions in `SKILL.md` **Cross-model review**.
   5. End the reply with `**需要你注意**（审查：<model> / 未审查：<原因>）` and
      its flags, each pointing at a row or a moment. "无" is a valid list.
 

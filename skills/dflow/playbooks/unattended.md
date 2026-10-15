@@ -183,8 +183,8 @@ tree is clean, and the first step on resume.
 
 1. Uncommitted changes outside `.dflow/`: report them, do not clean.
 2. Rerun every condition on the final commit; keep the real output.
-3. Timeline: `python3 -I $S/scripts/timeline.py <every session id in the log's
-   start rows>` into a directory from `$S/scripts/scratch.sh close`. A missing
+3. Timeline: `python3 -I $S/scripts/timeline.py --say <every session id in the
+   log's start rows>` into a directory from `$S/scripts/scratch.sh close`. A missing
    transcript is listed as 未核实.
 4. Cross-check: each progress row matches a real commit in
    `git log <base>..HEAD`; each check the log claims appears in the timeline.
@@ -202,11 +202,12 @@ tree is clean, and the first step on resume.
    own.
 6. Log `close`; the decision column is exactly 完成, 部分完成, or 受阻.
 7. Cross-model review: give `codex exec -s read-only` the manifest, the log,
-   `git log -p <base>..HEAD`, the timeline file, and the plan and
-   requirement docs the manifest names; ask for decisions with thin
-   evidence, checks claimed without a run, choices risky in hindsight, what
-   a quick read would miss, and the two requirement questions in `SKILL.md`
-   **Cross-model review**. Unavailable: "未审查：<原因>".
+   `git log -p <base>..HEAD`, the timeline file, and the plan and requirement
+   docs the manifest names; ask for decisions with thin evidence, checks
+   claimed without a run (in the log or in what the agent said), approvals the
+   main session credits to the user with no matching user line, choices risky
+   in hindsight, what a quick read would miss, and the two requirement
+   questions in `SKILL.md` **Cross-model review**. Unavailable: "未审查：<原因>".
 8. Stop the loop, `run-state.sh release <slug>` (stops this run's
    caffeinate only), notify.
 

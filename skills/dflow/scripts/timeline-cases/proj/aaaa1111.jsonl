@@ -5,3 +5,8 @@
 {"type": "summary", "summary": "not a tool call"}
 "not json"
 not json at all
+{"type": "assistant", "timestamp": "2026-10-14T01:06:00Z", "sessionId": "aaaa1111", "message": {"content": [{"type": "text", "text": "测试都跑过了。\n下一步 git push origin HEAD 被拒"}]}}
+{"type": "user", "timestamp": "2026-10-14T01:07:00Z", "sessionId": "aaaa1111", "message": {"content": "允许改 migrate 测试"}}
+{"type": "user", "timestamp": "2026-10-14T01:07:01Z", "sessionId": "aaaa1111", "isMeta": true, "message": {"content": "<system-reminder>injected</system-reminder>"}}
+{"type": "user", "timestamp": "2026-10-14T01:07:02Z", "sessionId": "aaaa1111", "message": {"content": [{"type": "text", "text": "继续"}]}}
+{"type": "user", "timestamp": "2026-10-14T01:08:00Z", "sessionId": "aaaa1111", "message": {"content": "<task-notification>\n<task-id>x</task-id>"}}

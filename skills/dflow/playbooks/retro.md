@@ -15,14 +15,14 @@ deserves a look first, then the rows it points at. Read-only.** From pstack
    write that run's files.
 3. Collect: the whole log, the manifest `.dflow/<slug>.md` when there is one,
    `git log --stat <base>..<branch>` (base from the manifest or the first
-   `start` row), and `python3 -I scripts/timeline.py <session ids from the
-   start rows>` into a `scripts/scratch.sh retro` directory. A missing
+   `start` row), and `python3 -I scripts/timeline.py --say <session ids from
+   the start rows>` into a `scripts/scratch.sh retro` directory. A missing
    transcript is 未核实.
 4. Check the trail as `references/decision-log.md` step 2 does, but write no
    rows: each mismatch (a row with no matching action or commit, a commit in
    `<base>..<branch>` that no row names or that falls outside the timeline,
    evidence that does not resolve or does not show the claim, a pivot with no
-   row) becomes a flag. Run `timeline.py --danger` on the same ids.
+   row, the main session crediting the user with an approval no user line gives) becomes a flag. Run `timeline.py --danger` on the same ids.
 5. Cross-model review as `references/decision-log.md` step 4, even when the
    closeout already ran one: the code may have changed since, and this is
    the review the user reads. A review this conversation already ran on the
