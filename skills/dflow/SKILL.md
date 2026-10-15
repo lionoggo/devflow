@@ -140,8 +140,9 @@ path in the reply.
 - edit files outside the task's goal, including global rule files.
 
 **Subagents** only when they cut total cost or split cleanly into
-independently checkable parts (explorers in a complex 调研, and workers in
-a parallel 实施 the user asked for, are such cases);
+independently checkable parts (explorers in a complex 调研, workers in a
+parallel 实施 the user asked for, and the fresh verifier for a high-risk
+change in 验收 are such cases);
 default Opus or lower. You review and verify their results yourself.
 **Cross-model review** runs by default at six points: before a plan is
 final, when a fix fails a second time, in the 评审 playbook, at the end of
