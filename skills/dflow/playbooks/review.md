@@ -13,7 +13,9 @@ sorted by what must change. Do not edit.** From pstack `interrogate` and
    other model read-only (`SKILL.md` **Cross-model review**), giving it the
    intent, the scope, and the lenses below, never your own verdict. Use the
    prompt in `references/plan-review.md` for a plan; for code, ask the same
-   questions plus the steps in `references/impact.md`. Keep its output file.
+   questions plus the steps in `references/impact.md`, and when the code
+   implements a plan or spec, give it those docs and the two requirement
+   questions in `SKILL.md` **Cross-model review**. Keep its output file.
 4. Review it yourself in parallel against the same lenses. For code, run
    `references/impact.md`: name the one fact the change is safe because of
    and its evidence level.

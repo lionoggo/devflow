@@ -31,8 +31,10 @@ any attended work with two or more stages or expected to run over an hour
      whether it was legitimate and why; "无" when there are none.
   4. Cross-model review of the trail (`SKILL.md` **Cross-model review**): give
      the other model the log, the timeline file as written (never trimmed),
-     and `git log -p <base>..HEAD`; ask
+     and `git log -p <base>..HEAD`, plus the plan and requirement docs when
+     the work implements one; ask
      for decisions with thin evidence, checks claimed without a run, choices
-     risky in hindsight, and what a quick read would miss.
+     risky in hindsight, what a quick read would miss, and the two
+     requirement questions in `SKILL.md` **Cross-model review**.
   5. End the reply with `**需要你注意**（审查：<model> / 未审查：<原因>）` and
      its flags, each pointing at a row or a moment. "无" is a valid list.

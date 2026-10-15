@@ -28,6 +28,8 @@ result without stopping.** From devflow-impl and pstack `feature`. Principles:
    or a product decision it left open, is reported; do the rest first.
 5. Preserve unrelated dirty work; never stage it. Reuse existing checks before
    adding a permanent test; add one only for a named, credible regression.
+   Every test you add or keep as evidence for an acceptance item follows
+   `principles/test-behavior.md`: it must fail if the feature is removed.
 6. Follow the plan's stages in order; each stage's check passes before
    dependent work starts. Work with two or more stages, or expected to run
    over an hour, keeps a decision log per `references/decision-log.md` and

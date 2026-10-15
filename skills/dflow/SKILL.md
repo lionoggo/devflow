@@ -141,7 +141,13 @@ as one explorer in a complex 调研. Elsewhere only on request. From Claude use
 with `</dev/null` (otherwise it waits on stdin and a background run hangs);
 from Codex use a read-only Claude session
 (`claude -p --permission-mode plan`). If the other model is unavailable, say
-"未审查：<原因>"; never substitute a self-review.
+"未审查：<原因>"; never substitute a self-review. When the work implements a
+plan or spec, the reviewer also gets those documents and the requirement
+docs they cite, and two more questions: which requirements are missing or
+only half done (decisions the log already records are not news), and which
+tests claim an acceptance item their assertions do not prove
+(`principles/test-behavior.md`). A diff alone only shows bugs, not what is
+missing.
 
 ## Principles
 

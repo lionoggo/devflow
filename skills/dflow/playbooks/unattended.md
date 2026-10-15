@@ -188,6 +188,9 @@ tree is clean, and the first step on resume.
    transcript is listed as 未核实.
 4. Cross-check: each progress row matches a real commit in
    `git log <base>..HEAD`; each check the log claims appears in the timeline.
+   For each acceptance item, read one test that carries it against
+   `principles/test-behavior.md`; one that would pass with the feature
+   removed does not count for that item, so report it as 未证实.
    Append `correction` rows for mismatches.
 5. Detection, instead of a guard: `run-state.sh scope <slug>` (protected or
    outside-scope files changed); each `.dflow/<slug>-<name>` check script
@@ -199,9 +202,11 @@ tree is clean, and the first step on resume.
    own.
 6. Log `close`; the decision column is exactly 完成, 部分完成, or 受阻.
 7. Cross-model review: give `codex exec -s read-only` the manifest, the log,
-   `git log -p <base>..HEAD`, and the timeline file; ask for decisions with
-   thin evidence, checks claimed without a run, choices risky in hindsight,
-   and what a quick read would miss. Unavailable: "未审查：<原因>".
+   `git log -p <base>..HEAD`, the timeline file, and the plan and
+   requirement docs the manifest names; ask for decisions with thin
+   evidence, checks claimed without a run, choices risky in hindsight, what
+   a quick read would miss, and the two requirement questions in `SKILL.md`
+   **Cross-model review**. Unavailable: "未审查：<原因>".
 8. Stop the loop, `run-state.sh release <slug>` (stops this run's
    caffeinate only), notify.
 
