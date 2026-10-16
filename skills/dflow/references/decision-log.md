@@ -41,7 +41,7 @@ step 6); by 排查 once it passes an hour or a fix fails twice
      every flagged command (subagents included) in the reply, each with
      whether it was legitimate and why; "无" when there are none.
   4. Cross-model review of the trail (`SKILL.md` **Cross-model review**; from
-     Codex, `claude -p` in the foreground with `timeout_ms` 1200000): give
+     Codex, through `scripts/review.sh` per `references/hosts.md`): give
      the other model the log, the timeline file as written (never trimmed),
      and `git log -p <base>..HEAD`, plus the plan and requirement docs when
      the work implements one; ask for decisions with thin evidence, checks

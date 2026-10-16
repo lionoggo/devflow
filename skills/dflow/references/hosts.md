@@ -17,7 +17,7 @@ when a Codex update changes behavior.
 | Wait for a long command | background Bash, or Monitor | run it in the foreground with a long `timeout_ms`, or hand it to a worker and `wait_agent`; never poll with sleeps |
 | Repeat rounds (无人值守) | Skill `loop` with no interval | `create_goal`; each goal continuation is a Round. `update_goal` with `complete` (or `blocked`) at Close, `paused` at Pause. Measured: continuation runs only in an interactive session (app, IDE, TUI); `codex exec` aborts it after the first turn |
 | Notify the user | PushNotification | `scripts/notify.sh <message>` (a desktop notice, not a phone push) |
-| Cross-model review (allow 20 minutes) | `codex exec -s read-only`, prompt on stdin or with `</dev/null` | `claude -p --permission-mode plan`, prompt on stdin, through the shell tool (`exec_command`) in the foreground with `timeout_ms` 1200000; needs network. Never from the node REPL or another MCP tool: measured, `claude` there reports "Not logged in" |
+| Cross-model review (allow 20 minutes) | `codex exec -s read-only`, prompt on stdin or with `</dev/null` | `scripts/review.sh start <prompt file> <out file>`, then `review.sh wait <out file>` until it prints `ended` (it runs `claude -p --permission-mode plan` in its own session; each wait returns within 50 seconds, so no call blocks for minutes); needs network. Call it through the shell tool, never the node REPL or another MCP tool: measured, `claude` there reports "Not logged in" |
 | Project skills | `.claude/skills/` | `.agents/skills/` or `.codex/skills/` (measured: `.claude/skills/` is not read) |
 | Global rule files (ask first) | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | `~/.codex/AGENTS.md`, `~/.codex/config.toml` |
 | Never stop for a permission prompt (无人值守) | bypass permissions mode | approval `never` and a sandbox that can write the repo and `.git` and reach the network for review (`danger-full-access`, or `workspace-write` with network on) |
@@ -33,5 +33,9 @@ Measured facts behind the Codex column:
 - `exec_command` blocks until the command ends or its `timeout_ms` passes.
   When the call ends, processes it started in the background die with it,
   `nohup … &` included; only a new session survives, which is how
-  `run-state.sh caffeinate` starts caffeinate. The default `timeout_ms` is
-  10 seconds, so a long command needs an explicit one.
+  `run-state.sh caffeinate` starts caffeinate and `review.sh start` the
+  reviewer. The default `timeout_ms` is 10 seconds, so a long command needs
+  an explicit one.
+- The Codex model keeps a single call under about 60 seconds even when told
+  to wait 20 minutes, so a reviewer run in the foreground is cut off and
+  yields 未审查; that is why the review goes through `review.sh`.

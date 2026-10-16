@@ -224,11 +224,10 @@ tree is clean, and the first step on resume.
    main session credits to the user with no matching user line, choices risky
    in hindsight, what a quick read would miss, and the two requirement
    questions in `SKILL.md` **Cross-model review**. Pass the user's
-   constraints on verbatim. From Codex the reviewer is `claude -p
-   --permission-mode plan` with the prompt on stdin, run through the shell
-   tool in the foreground with `timeout_ms` 1200000: a review takes several
-   minutes, a 60-second limit only yields 未审查, and from the node REPL
-   `claude` is not logged in. Unavailable: "未审查：<原因>"; go to
+   constraints on verbatim. From Codex: write the prompt to a file, then
+   `$S/scripts/review.sh start <prompt> <out>` and `review.sh wait <out>`
+   until `ended` (a review takes minutes; a 60-second foreground call only
+   yields 未审查). Unavailable: "未审查：<原因>"; go to
    step 9.
 7. Fix once: check each finding against the code; fix the ones that hold and
    need no new authority in one batch, with the failure path the finding

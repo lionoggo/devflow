@@ -23,7 +23,7 @@ pstack `how`, `why`. Principles: 以现状为准, 解释数字, 真实证据.
      subagent per angle (the Explore agent type, model `sonnet`; in Codex
      the explorer row of `references/hosts.md`: they trace and cite, and you
      verify) and give the other model (`codex exec -s read-only` in the
-     background; from Codex, `claude -p`) the angle of failure paths, edge cases, and where the code
+     background; from Codex, `scripts/review.sh` per `references/hosts.md`) the angle of failure paths, edge cases, and where the code
      disagrees with its docs or plans (always this angle: a different model
      on the angle most likely to find defects). All use
      `references/research-explorer-prompt.md`. Then you synthesize:
