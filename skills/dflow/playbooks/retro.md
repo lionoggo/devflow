@@ -39,6 +39,9 @@ choice, flags say the fact, 核对 says how far the trail can be trusted,
 教训 adds only the pattern. Hard limits:
 - 审查 is one short line: the model, and 复用 when reused. Why reuse was
   allowed goes under 核对.
+- Any P1 flag: the second line says `需要你：先看下面 <n> 个 P1` (plus any
+  decision), never 无需操作. The summary is the agent's own; it must not
+  talk the reader out of the review.
 - 等你决定 names each thing in words, never "第 1、2 项".
 - 需要你注意 holds P1s and anything that bears on a decision, at most two
   sentences each: the impact and when it happens. No mechanism, no fix
@@ -48,14 +51,14 @@ choice, flags say the fact, 核对 says how far the trail can be trusted,
 
 ```text
 <完成 / 部分完成 / 受阻 / 仍在运行>。<做成了什么、没做成什么，一句话>。共 <n> 个提交。
-需要你：<无需操作 / 决定什么 / 提供什么，一句话>。
+需要你：<无需操作（有 P1 时不能这样写）/ 先看下面 n 个 P1 / 决定什么 / 提供什么，一句话>。
 
 **等你决定**（有才写）
 - <事项>。<现在保持什么，不决定会怎样>。
 
 **需要你注意**
 审查：<模型>[，复用]（没审就写"未审查：<原因>"）
-- <P1/P2> <影响>。<何时触发或现状>。见日志 <时间> / 代码检查 <位置>。
+- P1 <影响>。<何时触发或现状>。见日志 <时间> / 代码检查 <位置>。
 （没有就写"审查：<模型>，无发现"，与上一行合并）
 
 **核对**
