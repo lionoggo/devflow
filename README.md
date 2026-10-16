@@ -1,18 +1,13 @@
 # devflow
 
-个人开发流程 Skill：plan → research / debug → impl → verify → commit，另有无人值守长运行 autorun 和 Codex 专用的 report。
+个人开发流程 Skill。主入口是 `dflow`，在 Claude Code 和 Codex 里都能用（Codex 侧的对应做法见 `skills/dflow/references/hosts.md`）。
 
 | Skill | 用途 | 安装位置 |
 |---|---|---|
-| devflow-plan | 需求与方案、验收标准 | ~/.agents/skills、~/.claude/skills |
-| devflow-research | 只读调研 | 同上 |
-| devflow-debug | 定位问题 | 同上 |
-| devflow-impl | 按计划实施 | 同上 |
-| devflow-verify | 独立验收 | 同上 |
-| devflow-commit | 提交 | 同上 |
-| devflow-autorun | 布置、续跑、中止无人值守运行（仅 `/devflow-autorun`） | 同上 |
-| devflow-autorun-tick | autorun 的每轮迭代（由 `/loop` 进入） | 同上 |
-| devflow-report | 报告 | ~/.codex/skills |
+| dflow | 唯一入口：按目标选流程（调研、排查、方案、审查、实施、验收、影响面、原型、去 AI 腔、无人值守、交接、进展、复盘、报告、发布、调优），可撤销的步骤不停下等人，收尾给证据。只在点名 `/dflow` 或 `$dflow` 时启用 | ~/.agents/skills、~/.claude/skills |
+| dflow-report | 报告 | ~/.codex/skills、~/.claude/skills |
+
+`skills/devflow-*` 是已下线的旧流程，源码留作参考，`install.sh` 不再链接它们，也不再需要 autorun 的全局守卫钩子。
 
 ## 安装
 
@@ -21,21 +16,17 @@
 ./install.sh --check  # 只检查
 ```
 
-本仓库是唯一的修改位置，各工具目录里都是指向这里的符号链接。Skill 正文和全局钩子使用 `~/.agents/skills/...` 路径，经链接解析到本仓库。
-
-autorun 的使用：`/devflow-autorun 按 <计划> 跑 <契约>`，看一屏摘要后回复"开始"，`arm.sh` 完成武装并自动启动循环。停放或收尾时推送通知；想知道做到哪了，说"/devflow-autorun 进展"。设计见 `docs/plan-autorun-simplify.md`。
-
-autorun 的守卫需要注册为 Claude Code 全局 PreToolUse 钩子；`install.sh` 只检查，不修改 `~/.claude/settings.json`，缺失时打印要添加的条目。
+本仓库是唯一的修改位置，各工具目录里都是指向这里的符号链接。
 
 ## 测试
 
 ```sh
-./test.sh   # guard、check、arm 三组测试
+./test.sh   # 运行 skills/*/scripts/*-test.sh
 ```
 
 修改 `scripts/` 下任何脚本后必须运行。
 
 ## 注意
 
-- 有 autorun 正在运行（任何项目里存在 `.devflow/*.running`）时，不要修改本仓库：守卫和 check.sh 是实时读取的。
+- 有无人值守运行正在进行（任何项目里存在 `.dflow/<slug>.lock/`）时，不要修改本仓库：脚本是实时读取的。
 - 提交信息：`<type>(<scope>): <subject>`，不超过 72 字符。

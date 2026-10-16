@@ -7,11 +7,12 @@ repo=$(cd "$(dirname "$0")" && pwd)
 check=${1:-}
 problems=0
 
-# devflow-report is Codex-only; dflow-report goes to Codex and Claude Code;
-# everything else goes to the shared dir and Claude Code.
+# devflow-* is retired (sources kept for reference) and is not linked.
+# dflow-report goes to Codex and Claude Code; everything else goes to the
+# shared dir (read by Codex) and Claude Code.
 targets_for() {
     case "$1" in
-        devflow-report) echo "$HOME/.codex/skills" ;;
+        devflow-*) ;;
         dflow-report) echo "$HOME/.codex/skills $HOME/.claude/skills" ;;
         *) echo "$HOME/.agents/skills $HOME/.claude/skills" ;;
     esac
@@ -35,16 +36,5 @@ for src in "$repo"/skills/*/; do
     src=${src%/}; name=$(basename "$src")
     for dir in $(targets_for "$name"); do link "$src" "$dir/$name"; done
 done
-
-# The autorun guard must be a global PreToolUse hook. Report only; never edit settings.
-settings="$HOME/.claude/settings.json"
-guard='$HOME/.agents/skills/devflow-autorun/scripts/guard.sh'
-if jq -e --arg g "$guard" '[.hooks.PreToolUse[]?.hooks[]?.command] | index($g)' "$settings" >/dev/null 2>&1; then
-    echo "ok       guard hook in $settings"
-else
-    echo "MISSING  guard hook in $settings; add to hooks.PreToolUse:"
-    echo "  {\"matcher\":\"Bash|Write|Edit|MultiEdit|NotebookEdit\",\"hooks\":[{\"type\":\"command\",\"command\":\"$guard\",\"timeout\":10}]}"
-    problems=$((problems+1))
-fi
 
 [ "$problems" = 0 ]
