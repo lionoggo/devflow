@@ -22,7 +22,13 @@ deserves a look first, then the rows it points at. Read-only.** From pstack
    rows: each mismatch (a row with no matching action or commit, a commit in
    `<base>..<branch>` that no row names or that falls outside the timeline,
    evidence that does not resolve or does not show the claim, a pivot with no
-   row, the main session crediting the user with an approval no user line gives) becomes a flag. Run `timeline.py --danger` on the same ids.
+   row, the main session crediting the user with an approval no user line
+   gives) becomes a flag. Run `timeline.py --danger` on the same ids.
+   Do not rerun the run's checks: tests and scripts can write files or make
+   paid calls, and the transcript is the evidence. A check claimed with no
+   run after the last edit is a flag. One whose result may differ now (the
+   environment changed since) is 未核实, with the command in `retro.md`;
+   run it only when the user asks.
 5. Cross-model review as `references/decision-log.md` step 4, even when the
    closeout already ran one: the code may have changed since, and this is
    the review the user reads. Reuse only a review this same conversation ran

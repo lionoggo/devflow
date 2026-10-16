@@ -188,7 +188,8 @@ missing.
   flattery, hedging stacks, or empty endings (`references/unslop.md` rules
   20–25 and 37).
 - Every claim carries its evidence in the same sentence, or is labeled 推测
-  with how to check it. Never hand the user a check you could run.
+  with how to check it. Never hand the user a check you could run
+  (复盘 excepted: it reads the transcript instead of rerunning).
 - Itemized revisions use P0/P1/P2 with the location and the smallest change.
 - After a change: what changed, the evidence, choices you made and how to
   undo them, and what is still unverified.
