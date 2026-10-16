@@ -28,13 +28,16 @@ deserves a look first, then the rows it points at. Read-only.** From pstack
    paid calls, and the transcript is the evidence. A check claimed with no
    run after the last edit is a flag. One whose result may differ now (the
    environment changed since) is 未核实, with the command in `retro.md`;
-   run it only when the user asks.
+   run it only when the user asks. A check or review counts only for the
+   commit it covered; a pass on an uncommitted tree, or a review before
+   later fixes, reported as covering the final commit is a flag.
 5. Cross-model review as `references/decision-log.md` step 4, even when the
    closeout already ran one: the code may have changed since, and this is
    the review the user reads. Reuse only a review this same conversation ran
    on the same log and HEAD; one from another conversation is rerun, since
    the tools or rules may have changed since, unless the user says to skip
-   it. Unavailable: 未审查：<原因>.
+   it. Give the reviewer the closeout's review files too, and ask which of
+   their findings were fixed only in part. Unavailable: 未审查：<原因>.
 6. A mistake that shows up twice in the trail is a lesson; offer 调优 for
    it, do not edit skills here.
 7. Write everything you checked to `<retro dir>/retro.md`: verification

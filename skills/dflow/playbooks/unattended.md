@@ -182,7 +182,9 @@ tree is clean, and the first step on resume.
 ## Close
 
 1. Uncommitted changes outside `.dflow/`: report them, do not clean.
-2. Rerun every condition on the final commit; keep the real output.
+2. Commit first, then rerun every condition on that HEAD; keep the real
+   output and name the SHA. A pass on an uncommitted tree is not a pass on
+   a commit.
 3. Timeline: `python3 -I $S/scripts/timeline.py --say <every session id in the
    log's start rows>` into a directory from `$S/scripts/scratch.sh close`. A missing
    transcript is listed as 未核实.
@@ -200,15 +202,30 @@ tree is clean, and the first step on resume.
    against the `start` hash, reported as "未观察到变化" or "有变化" (this
    cannot prove nothing was pushed). Report findings; never roll back on your
    own.
-6. Log `close`; the decision column is exactly 完成, 部分完成, or 受阻.
-7. Cross-model review: give `codex exec -s read-only` the manifest, the log,
+6. Cross-model review of HEAD; record that SHA as the review head. Give
+   `codex exec -s read-only` the manifest, the log,
    `git log -p <base>..HEAD`, the timeline file, and the plan and requirement
    docs the manifest names; ask for decisions with thin evidence, checks
    claimed without a run (in the log or in what the agent said), approvals the
    main session credits to the user with no matching user line, choices risky
    in hindsight, what a quick read would miss, and the two requirement
-   questions in `SKILL.md` **Cross-model review**. Unavailable: "未审查：<原因>".
-8. Stop the loop, `run-state.sh release <slug>` (stops this run's
+   questions in `SKILL.md` **Cross-model review**. Pass the user's
+   constraints on verbatim. Unavailable: "未审查：<原因>"; go to step 9.
+7. Fix once: check each finding against the code; fix the ones that hold and
+   need no new authority in one batch, with the failure path the finding
+   names checked, not only the old tests. Skip the batch when the deadline
+   leaves no time for its checks and step 8. Log each fix as `side`, then
+   redo steps 2, 4, and 5.
+8. Review the fix once: if anything was committed after the review head,
+   give `codex exec -s read-only` the first review, `git log -p <review
+   head>..HEAD`, and the current code around each touched path; ask whether
+   each fix resolves the whole finding, what related paths it missed, and
+   whether the log or docs now claim more than the code does. After this,
+   commit nothing more, not even wording; what it finds goes to the user.
+   Unavailable: the range `<review head>..HEAD` is 未审查.
+9. Log `close`; the decision column is exactly 完成, 部分完成, or 受阻,
+   judged by the conditions, not by a clean review.
+10. Stop the loop, `run-state.sh release <slug>` (stops this run's
    caffeinate only), notify.
 
 **Reply:**
@@ -225,5 +242,5 @@ tree is clean, and the first step on resume.
 - 日志：.dflow/<slug>.tsv（清单 .dflow/<slug>.md）
 **需要你注意**
 审查：codex（没审就写"未审查：<原因>"）
-- <审查要点，最多 5 条，每条指向日志的某一行或某个时刻>
+- <审查要点，最多 5 条，每条指向日志的某一行或某个时刻；没修或只修了一半的意见优先，两轮审查都算；审后改动没补审就写"未审查：<审查时 HEAD>..HEAD，<原因>">
 ```
