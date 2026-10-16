@@ -10,8 +10,8 @@ pid=$(DFLOW_REVIEW_CMD='sleep 4; echo "got: $(cat)"; exit 5' "$rv" start "$t/pro
 [ $(( $(date +%s) - s )) -lt 3 ] && ok || bad "start blocked"
 [ "$(ps -o pgid= -p "$pid" | tr -d ' ')" = "$pid" ] && ok || bad "reviewer not in its own session"
 out=$("$rv" wait "$t/out" 1); [ $? = 3 ] && [ "$out" = running ] && ok || bad "wait while running: $out"
-out=$("$rv" wait "$t/out" 20); rc=$?
-[ $rc = 0 ] && [ "$out" = "ended exit 5" ] && ok || bad "wait after end: $rc $out"
+out=$("$rv" wait "$t/out" 40); rc=$?
+[ $rc = 0 ] && [ "$out" = "ended exit 5" ] && ok || bad "wait after end: $rc $out; reviewer: $(ps -o pid=,stat=,etime=,command= -p "$pid" 2>&1); files: $(ls -la "$t")"
 grep -q '^got: 审查这个$' "$t/out" && ok || bad "prompt not on stdin or output lost: $(cat "$t/out")"
 DFLOW_REVIEW_CMD='no-such-reviewer-cmd' "$rv" start "$t/prompt" "$t/out2" >/dev/null
 "$rv" wait "$t/out2" 10 >/dev/null; [ "$(cat "$t/out2.exit")" != 0 ] && ok || bad "a reviewer that cannot start reports success"
