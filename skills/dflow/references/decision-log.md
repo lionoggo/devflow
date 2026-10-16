@@ -46,8 +46,9 @@ step 6); by 排查 once it passes an hour or a fix fails twice
      the main session credits to the user with no matching user line, choices
      risky in hindsight, what a quick read would miss, and the two requirement
      questions in `SKILL.md` **Cross-model review**.
-  5. End the reply with `**需要你注意**（审查：<model> / 未审查：<原因>）` and
-     its flags, each pointing at a row or a moment. "无" is a valid list.
+  5. End the reply with a `**需要你注意**` section: first its own line
+     `审查：<model>` (or `未审查：<原因>`), then the flags, each pointing at a
+     row or a moment. "无" is a valid list; the model line is not optional.
 
 **How a person reads it** (say this when pointing someone at a log): not top
 to bottom. Start from the `需要你注意` list (the closeout reply, or ask for

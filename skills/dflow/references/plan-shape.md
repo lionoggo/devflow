@@ -12,7 +12,7 @@ Non-goals: <excluded behavior>
 Decisions: <selected choices that shape behavior, architecture, data, or scope>
 Open decisions: none
 Acceptance:
-- A1: <observable pass condition> — verify with <method>
+- A1: <observable pass condition>, verified by <method>
 - A2: ...
 - E1: <start → user actions → visible result> (environment)   # only when needed
 Scope: <modules/boundaries touched>
@@ -47,11 +47,11 @@ restructures a subsystem. Anchor names in current code:
 
 ```text
 Components: <component> owns <responsibility>; must not own <boundary>
-Contracts: <interface/schema/event> — owner -> consumer; errors, compatibility
+Contracts: <interface/schema/event>: owner -> consumer; errors, compatibility
 Dependency direction: allowed <A -> B>; forbidden <B -> A>
 Runtime flow: <entry -> components -> observable result>; failure/recovery
 State: source of truth, derived/persisted state, concurrency, restart
-Invariants: <conditions that must stay true> — each checked by some acceptance
+Invariants: <conditions that must stay true>, each checked by some acceptance
 Change map: reuse / modify / add / remove
 ```
 

@@ -17,11 +17,14 @@ to this file's directory.
 2. Match the request to one playbook in the table below. "新任务" or "new
    task" means re-match; short follow-ups ("继续", "你来改", "好的") stay in
    the current playbook.
-3. Make the route visible before any other work. Start the reply with one
-   line: `剧本：<name>（<step> → <step> → …>）`. If a todo tool exists
-   (TodoWrite, TaskCreate found via ToolSearch, or Codex update_plan), also
-   put the playbook's steps in it verbatim. A step you skip is named with `跳过：<原因>` in the
-   final reply.
+3. Make the route visible before any other work, the way pstack does: put
+   the playbook's steps in the todo tool verbatim (TodoWrite, TaskCreate
+   found via ToolSearch, or Codex update_plan); the reply does not repeat
+   them. If you did not put the steps in a todo tool this turn (none exists,
+   or you did not call it), start the reply with one line instead:
+   `按「<name>」流程：<step> → <step> → …`. One of the two always happens. In anything the user reads, call a
+   playbook 流程, never 剧本. A step you skip is named with `跳过：<原因>` in
+   the final reply.
 4. Run it. Read `principles/<name>.md` in full for any principle you apply.
 5. End with the playbook's reply, written per **Reply** below.
 
@@ -178,8 +181,8 @@ missing.
 
 ## Reply
 
-- Simplified Chinese. Conclusion first. Short. One concrete example when it
-  helps. No coined terms, internal IDs, or English field names. No filler,
+- Simplified Chinese. Conclusion first. Short sentences, one thought each.
+  One concrete example when it helps. No coined terms, internal IDs, or English field names. No filler,
   flattery, hedging stacks, or empty endings (`references/unslop.md` rules
   20–25 and 37).
 - Every claim carries its evidence in the same sentence, or is labeled 推测

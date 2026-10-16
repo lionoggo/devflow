@@ -214,7 +214,7 @@ tree is clean, and the first step on resume.
 **Reply:**
 
 ```text
-**结果**：<完成 / 部分完成 / 受阻> — <一句话>
+**结果**：<完成 / 部分完成 / 受阻>。<一句话>
 - 完成条件：<每条 → 最终真实输出>
 - 提交：<基线..HEAD，n 个；按默认做的单独列出>
 - 按默认做的决定：<问题 → 默认值 → 怎么改（git revert <sha>）>
@@ -223,6 +223,7 @@ tree is clean, and the first step on resume.
 - 后续事项：<范围外发现；没有就省略>
 - 影响面：<见 SKILL.md>
 - 日志：.dflow/<slug>.tsv（清单 .dflow/<slug>.md）
-**需要你注意**（审查：codex / 未审查：原因）
-- <审查要点，最多 5 条>
+**需要你注意**
+审查：codex（没审就写"未审查：<原因>"）
+- <审查要点，最多 5 条，每条指向日志的某一行或某个时刻>
 ```

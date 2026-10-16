@@ -46,7 +46,7 @@ give it the scope, the data shape, and the check; review its diff yourself.
 **Reply:**
 
 ```text
-**结果**：<完成 / 部分完成 / 受阻> — <一句话>
+**结果**：<完成 / 部分完成 / 受阻>。<一句话>
 - 提交：<sha 和标题，按顺序>
 - 验收：<每个标签 → 证据（层级）→ 结果；没跑的写未验证和原因>
 - 结构：<按 references/sketch.md 先定了结构（选中的形状一句话）/ 跳过：原因>
@@ -56,5 +56,7 @@ give it the scope, the data shape, and the check; review its diff yourself.
 - 我做的选择：<选择 → 怎么改回>
 - 下一步：<剩余阶段或未覆盖项；没有就省略>
 - 日志：<.dflow/<slug>.tsv；没有决策日志就省略>
-**需要你注意**（审查：<model> / 未审查：<原因>）<只在有决策日志时>
+**需要你注意**（只在有决策日志时）
+审查：<模型>（没审就写"未审查：<原因>"）
+- <要注意的点，指向日志的某一行或某个时刻；没有就写"无">
 ```
