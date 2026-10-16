@@ -31,7 +31,10 @@ step 6); by 排查 once it passes an hour or a fix fails twice
   2. Audit this run's rows against it and `git log`: every row is a real
      decision or action, every evidence pointer resolves and shows what the
      row claims, and every pivot or abandoned approach that shaped the work
-     has a row. Fix gaps with new rows, never by editing.
+     has a row. A claimed check ("lint 通过") counts only if the timeline
+     shows it run after the last edit to what it covers; with an edit in
+     between and no rerun, it is a check claimed without a run, not 未核实.
+     Fix gaps with new rows, never by editing.
   3. `python3 -I scripts/timeline.py --danger <the same session ids>`: list
      every flagged command (subagents included) in the reply, each with
      whether it was legitimate and why; "无" when there are none.

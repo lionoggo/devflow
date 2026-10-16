@@ -10,3 +10,4 @@ not json at all
 {"type": "user", "timestamp": "2026-10-14T01:07:01Z", "sessionId": "aaaa1111", "isMeta": true, "message": {"content": "<system-reminder>injected</system-reminder>"}}
 {"type": "user", "timestamp": "2026-10-14T01:07:02Z", "sessionId": "aaaa1111", "message": {"content": [{"type": "text", "text": "继续"}]}}
 {"type": "user", "timestamp": "2026-10-14T01:08:00Z", "sessionId": "aaaa1111", "message": {"content": "<task-notification>\n<task-id>x</task-id>"}}
+{"type": "api-request-blob", "sessionId": "aaaa1111", "hash": "h1", "message": {"role": "user", "content": [{"type": "tool_use", "id": "dup1", "name": "Bash", "input": {"command": "git push origin HEAD"}}, {"type": "text", "text": "copied"}]}}

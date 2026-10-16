@@ -25,6 +25,7 @@ d=$(python3 -I "$here/timeline.py" --danger aaaa1111 bbbb2222); rc=$?
 [ $rc = 1 ] && [ "$(echo "$d" | wc -l | tr -d ' ')" = 4 ] && ok || bad "--danger: exit $rc: $d"
 python3 -I "$here/timeline.py" --danger aaaa1111 >/dev/null; [ $? = 1 ] && ok || bad "--danger exit"
 s=$(python3 -I "$here/timeline.py" --say aaaa1111); rc=$?
+echo "$s" | cut -f1 | grep -qx '' && bad "row without a timestamp (copied request entry)" || ok
 [ $rc = 0 ] && ok || bad "--say exit $rc"
 echo "$s" | grep -q $'\tassistant\t测试都跑过了。 ⏎ 下一步 git push origin HEAD 被拒\t-\t' && ok || bad "--say assistant text: $s"
 echo "$s" | grep -q $'\tuser\t允许改 migrate 测试\t-' && ok || bad "--say user string"
@@ -35,7 +36,7 @@ echo "$s" | grep -q $'\tassistant\t.*DANGER' && bad "--say text marked DANGER" |
 echo "$s" | grep -q $'agent-w1\tprompt\t实施单元 u1\t-' && ok || bad "--say subagent prompt"
 echo "$s" | grep -q $'\tnotice\t<task-notification>' && ok || bad "--say task notice"
 [ "$(echo "$s" | grep -c $'\t\(Bash\|Edit\)\t')" = 3 ] && ok || bad "--say lost tool rows: $s"
-for c in 'git switch -C "$(git branch --show-current)" abc123:False' "git switch -C unit-u1 abc:True" "git switch -C worktree-agent-abc 1234:False" "git switch main:True" "git switch -C other HEAD:True"; do
+for c in 'git switch -C "$(git branch --show-current)" abc123:False' "git switch -C unit-u1 abc:True" "git switch -C worktree-agent-abc 1234:False" "git switch main:True" "git switch -C other HEAD:True" "git merge-base HEAD main:False" "git merge dflow/x:True"; do
     r=$(python3 -I -c "import sys,re;sys.path.insert(0,'$here');import timeline;print(bool(timeline.DANGER.search(sys.argv[1])))" "${c%:*}")
     [ "$r" = "${c##*:}" ] && ok || bad "danger($c) = $r"
 done

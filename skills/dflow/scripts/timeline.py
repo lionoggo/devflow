@@ -27,7 +27,7 @@ import sys
 # A git subcommand the unattended playbook forbids, right after `git` and its global options.
 DANGER = re.compile(
     r"\bgit(?:\s+-[Cc]\s+\S+|\s+--?[\w-]+(?:=\S+)?)*\s+"
-    r"(push|merge|rebase|reset|clean|cherry-pick|switch(?!\s+-[cC]\s+(?:dflow/|worktree-agent-|\x22?\$\(git branch --show-current\)))|checkout\s+-[bB](?!\s+dflow/)|commit\s+[^|;&]*--amend|"
+    r"(push|merge(?!-base|-tree|-file)|rebase|reset|clean|cherry-pick|switch(?!\s+-[cC]\s+(?:dflow/|worktree-agent-|\x22?\$\(git branch --show-current\)))|checkout\s+-[bB](?!\s+dflow/)|commit\s+[^|;&]*--amend|"
     r"stash(?!\s+list)|tag\s+\w+|branch\s+-[dDmMfc]|worktree\s+(?:add|remove|move|prune))\b")
 
 
@@ -95,7 +95,9 @@ def rows(path, say=False):
             e = json.loads(line)
         except ValueError:
             continue
-        if not isinstance(e, dict):
+        # Only the conversation's own turns; other entries (api-request-blob and the like)
+        # carry copies of earlier messages without a timestamp and would duplicate calls.
+        if not isinstance(e, dict) or e.get("type") not in ("assistant", "user"):
             continue
         content = (e.get("message") or {}).get("content")
         name = os.path.basename(path)[:-6]
