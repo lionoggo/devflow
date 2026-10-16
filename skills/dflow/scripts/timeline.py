@@ -7,7 +7,8 @@ DFLOW_TRANSCRIPTS), together with its subagents' transcripts in <id>/subagents/*
 which are labelled agent-<id> in column 2. Failing that, it is a Codex thread id, looked up
 as ~/.codex/sessions/*/*/*/rollout-*-<id>.jsonl (override with DFLOW_CODEX_SESSIONS), together
 with every rollout whose parent_thread_id leads back to it (subagents, labelled
-agent-<id[:8]>; the parent history a forked subagent starts with is skipped). Codex shell
+agent-<last 8 of id>; a Codex thread is labelled by the last 8 characters of its id, since its
+first ones encode the start time; the parent history a forked subagent starts with is skipped). Codex shell
 calls (exec_command) are labelled Bash like Claude's, so the DANGER check covers both.
 Output, one line per tool call, sorted by time:
   <ts>\t<session[:8]>\t<tool>\t<command or path>\t<ok|error>\t<first line of result>
@@ -165,7 +166,10 @@ def codex_describe(name, args, n):
 def codex_rows(path, meta, say):
     calls, out = {}, []
     sub = meta.get("thread_source") == "subagent" or bool(meta.get("parent_thread_id"))
-    sid = ("agent-" if sub else "") + str(meta.get("id", os.path.basename(path)))[:8]
+    # Codex ids are time-ordered (UUIDv7): threads started within about a minute share the first
+    # eight characters, so label them by the random tail instead.
+    tid = str(meta.get("id", os.path.basename(path)))
+    sid = ("agent-" if sub else "") + tid[-8:]
     start = meta.get("subagent_history_start_ordinal", 0) if sub else 0
     first_user = True
     for line in open(path, encoding="utf-8"):

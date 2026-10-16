@@ -20,7 +20,8 @@ a paragraph that still names goal, scope, verify, and report. From pstack
 报告     状态、分支、HEAD、实际跑过的命令和输出、偏差、建议的后续；
          决策行：本单元里的分叉、换思路、放弃的做法，每行六列
          （ts phase decision why evidence result），证据指向提交或 path:line
-规则     提交信息 <type>(<scope>): <subject>，不超过 72 字符；只提交通过检查的改动；
+规则     只按本说明做，不加载其他流程类 skill（如 devflow-*）；
+         提交信息 <type>(<scope>): <subject>，不超过 72 字符；只提交通过检查的改动；
          新写的测试要调用被测代码并断言用户看到的确切结果：被测函数什么都不返回或返回错值时仍能通过的测试
          （只断言存在/不存在、只断言被调用、断言测试自己造的数据、断言一个本来就成立的条件）不算覆盖验收项
 ```

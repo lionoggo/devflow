@@ -21,9 +21,13 @@ Write four items:
 Suggest it only with at least two independent units, each over about 50
 changed lines or a check over about 2 minutes (provisional thresholds).
 Without the user's "并行" (or "开始，并行" at an unattended frame), carry on
-in order without waiting. The user's word is the explicit request for
-worktrees; it covers only what `parallel.sh` and the worktree subagents
-create and remove. In Codex the steps are the same with the tools in
+in order without waiting. The user's "并行" is the explicit request for
+worktrees: it meets any rule (a global AGENTS.md included) that asks for the
+user's explicit word before creating worktrees, for exactly what
+`parallel.sh` and the worktree subagents create and remove. "On this
+branch" means where the units land, not where workers run. Never run two
+workers in one shared tree; when worktrees are not possible, work in
+order. In Codex the steps are the same with the tools in
 `references/hosts.md`; the differences are marked "Codex" below.
 
 ## Run

@@ -47,18 +47,19 @@ export DFLOW_CODEX_SESSIONS="$here/timeline-cases/codex"
 P=cccc0001-0000-7000-8000-000000000001
 c=$(python3 -I "$here/timeline.py" "$P"); rc=$?
 [ $rc = 0 ] && ok || bad "codex exit $rc"
-[ "$(echo "$c" | wc -l | tr -d ' ')" = 6 ] && ok || bad "codex row count: $c"
-echo "$c" | grep -q $'cccc0001\tBash\tgit status --short\tok\tM a.py' && ok || bad "codex exec_command row: $c"
-echo "$c" | grep -q $'cccc0001\tapply_patch\t/r/a.py /r/b.py\tok' && ok || bad "codex apply_patch row"
-echo "$c" | grep -q $'agent-cccc0002\tBash\tgit stash\tDANGER ok' && ok || bad "codex subagent danger"
+[ "$(echo "$c" | wc -l | tr -d ' ')" = 7 ] && ok || bad "codex row count: $c"
+[ "$(echo "$c" | cut -f2 | grep -c '^agent-')" = 2 ] && [ "$(echo "$c" | cut -f2 | grep '^agent-' | sort -u | wc -l | tr -d ' ')" = 2 ] && ok || bad "two subagents with the same id prefix share a label: $c"
+echo "$c" | grep -q $'00000001\tBash\tgit status --short\tok\tM a.py' && ok || bad "codex exec_command row: $c"
+echo "$c" | grep -q $'00000001\tapply_patch\t/r/a.py /r/b.py\tok' && ok || bad "codex apply_patch row"
+echo "$c" | grep -q $'agent-00000002\tBash\tgit stash\tDANGER ok' && ok || bad "codex subagent danger"
 echo "$c" | grep -q $'git commit -qm x ⏎ git push origin HEAD\tDANGER error' && ok || bad "codex exit code 1 not error, or push missed"
 echo "$c" | grep -q 'git push origin main' && bad "codex: forked subagent's copied history counted" || ok
-echo "$c" | grep -q 'cccc0003' && bad "codex: unrelated thread pulled in" || ok
+echo "$c" | grep -q '00000003' && bad "codex: unrelated thread pulled in" || ok
 cs=$(python3 -I "$here/timeline.py" --say "$P")
 echo "$cs" | grep -q $'\tuser\t开始\t-' && ok || bad "codex --say user"
 [ "$(echo "$cs" | grep -c $'\tuser\t')" = 1 ] && ok || bad "codex --say kept injected context: $cs"
 echo "$cs" | grep -q $'\tassistant\t改好了，测试通过。 ⏎ 下一步提交' && ok || bad "codex --say assistant"
-echo "$cs" | grep -q $'agent-cccc0002\tprompt\t实施单元 u1' && ok || bad "codex --say subagent prompt"
+echo "$cs" | grep -q $'agent-00000002\tprompt\t实施单元 u1' && ok || bad "codex --say subagent prompt"
 echo "$cs" | grep -q $'\tnotice\tturn started by goal' && ok || bad "codex --say goal turn"
 echo "$cs" | grep -q $'\tnotice\t<subagent_notification>' && ok || bad "codex --say subagent notice"
 echo "$cs" | grep -q $'\tnotice\t<codex_internal_context source="goal">' && ok || bad "codex --say goal context not a notice"
