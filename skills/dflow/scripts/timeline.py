@@ -129,7 +129,7 @@ def said(e, content):
 
 # Context Codex injects as user messages; not something the user typed.
 CODEX_INJECTED = ("<environment_context>", "<user_instructions>", "<permissions", "# AGENTS.md",
-                  "<skills_instructions>", "<collaboration_mode>", "<personality")
+                  "<skills_instructions>", "<collaboration_mode>", "<personality", "<skill>")
 
 
 # Messages Codex itself sends in the user role: a goal continuation, a subagent finishing, an interrupt.

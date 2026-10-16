@@ -102,6 +102,7 @@ if command -v caffeinate >/dev/null; then
     expect 0 "caffeinate" "$rs" caffeinate demo
     mine=$(sed -n 's/^caffeinate_pid: //p' .dflow/demo.lock/lease)
     ps -o comm= -p "$mine" | grep -q caffeinate && ok || bad "caffeinate not running"
+    [ "$(ps -o pgid= -p "$mine" | tr -d ' ')" = "$mine" ] && ok || bad "caffeinate not in its own session (a host that kills the call's group would stop it)"
     expect 0 "release" "$rs" release demo
     sleep 0.3; kill -0 "$mine" 2>/dev/null && bad "own caffeinate still running" || ok
     kill -0 "$other" 2>/dev/null && ok || bad "other caffeinate was stopped"

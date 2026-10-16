@@ -17,8 +17,10 @@ pause. Anything else starts at **Frame**.
 
 ## Frame (the one stop)
 
-One screen, then wait for "开始". Check every fact first; never ask what you
-can run.
+One screen, then end your turn and wait for "开始". Before it, claim
+nothing, write no run file, start no loop or goal, and change no code, even
+in a session told never to stop: the frame is the run's one stop. Check
+every fact first; never ask what you can run.
 
 1. **Done conditions**: each a command, its expected result, and its baseline
    output now. Ordered stages S1..Sn are fine; with an approved plan, take its
@@ -52,7 +54,9 @@ can run.
    with its default, so the user can change it here.
 7. **Deadline**: default 8 hours from start, as an absolute UTC time. A pickup
    never restarts it.
-8. **Environment**: needs a mode that never stops for a permission prompt
+8. **Environment**: the run branch `dflow/<slug>`, created at "开始" in this
+   worktree (a branch, not a new worktree; the run never commits to the
+   branch it starts on); needs a mode that never stops for a permission prompt
    (`references/hosts.md`);
    `caffeinate` keeps the Mac awake; do not edit this repo by hand while it
    runs (say "暂停" first). First unattended run of this kind: suggest the
@@ -70,7 +74,8 @@ can run.
 On "开始":
 1. Re-check HEAD, the tree, and each baseline output. Anything changed since
    the frame: stop and show what changed.
-2. Create the branch. Make sure the exclude file
+2. Create the branch: `git switch -c dflow/<slug>` in this worktree. "开始"
+   approves it; it is a branch, not a new worktree. Make sure the exclude file
    (`git rev-parse --git-path info/exclude`) has `.dflow/`; for a parallel
    run, `parallel.sh prepare <slug>` also adds `.claude/worktrees/`.
 3. Write `.dflow/<slug>.md`: first a block of `key: value` lines (`slug`,
@@ -156,7 +161,8 @@ on a default.
 default dead stage-done side blocked pause close correction`; at least one
 row per round.
 
-**Notify** with PushNotification (Codex: `$S/scripts/notify.sh`) only when a `gate` row is written ("需要你
+**Notify** ("开始" approves it; never ask) with PushNotification (Codex:
+`$S/scripts/notify.sh`) only when a `gate` row is written ("需要你
 定：<问题>，已先做别的 / 已按默认 <值> 处理") and when the run stops
 ("<slug> 完成 / 部分完成 / 受阻"). A failed send is not retried; mention it
 in the closeout.

@@ -155,7 +155,8 @@ any work that kept a decision log (including every unattended closeout), in
 `codex exec -s read-only`, the prompt either on stdin or as an argument
 with `</dev/null` (otherwise it waits on stdin and a background run hangs);
 from Codex use a read-only Claude session
-(`claude -p --permission-mode plan`). If the other model is unavailable, say
+(`claude -p --permission-mode plan`, prompt on stdin, in the foreground with
+`timeout_ms` 1200000: a review takes minutes). If the other model is unavailable, say
 "未审查：<原因>"; never substitute a self-review. When the work implements a
 plan or spec, the reviewer also gets those documents and the requirement
 docs they cite, and two more questions: which requirements are missing or

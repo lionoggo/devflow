@@ -107,8 +107,12 @@ caffeinate)
     need_manifest; [ -f "$lease" ] || die "no lease"
     secs=$(( $(epoch "$(field "$man" deadline)") - $(date -u +%s) )); [ "$secs" -gt 0 ] || die "deadline passed"
     command -v caffeinate >/dev/null || { echo "ok no caffeinate on this system"; exit 0; }
-    nohup caffeinate -i -t "$secs" >/dev/null 2>&1 &
-    pid=$!; disown 2>/dev/null || true
+    # In a new session, so a host that kills the command's process group when the call ends
+    # (Codex does) leaves it running; nohup alone is not enough there.
+    pid=$(python3 -I -c 'import subprocess, sys
+p = subprocess.Popen(["caffeinate", "-i", "-t", sys.argv[1]], start_new_session=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+print(p.pid)' "$secs" 2>/dev/null) || { nohup caffeinate -i -t "$secs" >/dev/null 2>&1 & pid=$!; disown 2>/dev/null || true; }
     sed -i.bak "s/^caffeinate_pid: .*/caffeinate_pid: $pid/" "$lease" && rm -f "$lease.bak"
     echo "ok caffeinate pid $pid for ${secs}s" ;;
 release)
