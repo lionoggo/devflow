@@ -21,10 +21,10 @@ to this file's directory.
    the playbook's steps in the todo tool verbatim (TodoWrite, TaskCreate
    found via ToolSearch, or Codex update_plan); the reply does not repeat
    them. If you did not put the steps in a todo tool this turn (none exists,
-   or you did not call it), say one line before any other work instead:
-   `按「<name>」流程：<step> → <step> → …`. One of the two always happens.
-   The final reply does not open with it unless the turn has no other
-   message. In anything the user reads, call a
+   or you did not call it), your first text this turn, right after
+   reading the playbook and before any other tool call, is one line: `按「<name>」流程：<step> → <step> → …`. One of
+   the two always happens. The final reply does not repeat the line unless
+   the turn had no earlier text. In anything the user reads, call a
    playbook 流程, never 剧本. A step you skip is named with `跳过：<原因>` in
    the final reply.
 4. Run it. Read `principles/<name>.md` in full for any principle you apply.
