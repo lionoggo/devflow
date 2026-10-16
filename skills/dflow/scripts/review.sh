@@ -6,7 +6,8 @@
 #                                             prompt on stdin, stdout and stderr to <out-file>; prints the pid
 #   review.sh wait <out-file> [seconds]       wait up to <seconds> (default 50) for it to end;
 #                                             exit 0 ended (its exit code in <out-file>.exit), 3 still running
-# The other model: from Codex `claude -p --permission-mode plan`; from Claude Code
+# The other model: from Codex `claude -p --tools Read,Grep,Glob` (read and search only: plan mode would
+# write a plan file under ~/.claude/plans); from Claude Code
 # `codex exec -s read-only -`. DFLOW_REVIEW_CMD (a shell command) replaces it, for tests.
 set -u
 cmd=${1:-}
@@ -24,7 +25,7 @@ case $cmd in
 start)
     prompt=${2:-}; out=${3:-}; [ -f "$prompt" ] && [ -n "$out" ] || usage
     if [ -n "${DFLOW_REVIEW_CMD:-}" ]; then set -- sh -c "$DFLOW_REVIEW_CMD"
-    elif [ "$(host)" = codex ]; then set -- claude -p --permission-mode plan
+    elif [ "$(host)" = codex ]; then set -- claude -p --tools Read,Grep,Glob
     else set -- codex exec -s read-only -
     fi
     rm -f "$out.exit"

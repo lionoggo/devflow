@@ -154,7 +154,7 @@ any work that kept a decision log (including every unattended closeout), in
 复盘, and as one explorer in a complex 调研. Elsewhere only on request. From Claude use
 `codex exec -s read-only`, the prompt either on stdin or as an argument
 with `</dev/null` (otherwise it waits on stdin and a background run hangs);
-from Codex use a read-only Claude session through `scripts/review.sh`
+from Codex use a Claude session limited to reading through `scripts/review.sh`
 (`start`, then `wait` until `ended`; `references/hosts.md`). If the other model is unavailable, say
 "未审查：<原因>"; never substitute a self-review. When the work implements a
 plan or spec, the reviewer also gets those documents and the requirement
