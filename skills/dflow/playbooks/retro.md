@@ -25,8 +25,10 @@ deserves a look first, then the rows it points at. Read-only.** From pstack
    row, the main session crediting the user with an approval no user line gives) becomes a flag. Run `timeline.py --danger` on the same ids.
 5. Cross-model review as `references/decision-log.md` step 4, even when the
    closeout already ran one: the code may have changed since, and this is
-   the review the user reads. A review this conversation already ran on the
-   same log and HEAD is reused. Unavailable: 未审查：<原因>.
+   the review the user reads. Reuse only a review this same conversation ran
+   on the same log and HEAD; one from another conversation is rerun, since
+   the tools or rules may have changed since, unless the user says to skip
+   it. Unavailable: 未审查：<原因>.
 6. A mistake that shows up twice in the trail goes under 值得记下的教训 with
    an offer to run 调优; do not edit skills here.
 

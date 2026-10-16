@@ -34,6 +34,8 @@ step 6); by 排查 once it passes an hour or a fix fails twice
      has a row. A claimed check ("lint 通过") counts only if the timeline
      shows it run after the last edit to what it covers; with an edit in
      between and no rerun, it is a check claimed without a run, not 未核实.
+     A row the timeline marks `…[截断]` is not evidence of absence: read that
+     entry in the raw transcript before calling anything 未核实.
      Fix gaps with new rows, never by editing.
   3. `python3 -I scripts/timeline.py --danger <the same session ids>`: list
      every flagged command (subagents included) in the reply, each with

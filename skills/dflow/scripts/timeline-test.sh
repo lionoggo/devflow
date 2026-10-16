@@ -31,6 +31,8 @@ echo "$s" | grep -q $'\tassistant\t测试都跑过了。 ⏎ 下一步 git push 
 echo "$s" | grep -q $'\tuser\t允许改 migrate 测试\t-' && ok || bad "--say user string"
 echo "$s" | grep -q $'\tuser\t继续\t-' && ok || bad "--say user text blocks"
 echo "$s" | grep -q $'unittest\tok\tOK ⏎ Ran 2 tests' && ok || bad "--say long result"
+python3 -I "$here/timeline.py" --say dddd4444 | grep -q 'pnpm lint && echo checked' && ok || bad "--say cut a long command"
+python3 -I "$here/timeline.py" dddd4444 | grep -q '…\[截断，原文 [0-9]* 字\]' && ok || bad "default mode does not mark a cut command"
 echo "$s" | grep -q 'injected' && bad "--say kept a meta message" || ok
 echo "$s" | grep -q $'\tassistant\t.*DANGER' && bad "--say text marked DANGER" || ok
 echo "$s" | grep -q $'agent-w1\tprompt\t实施单元 u1\t-' && ok || bad "--say subagent prompt"

@@ -6,7 +6,8 @@ A session id is looked up as ~/.claude/projects/*/<id>.jsonl (override the root 
 DFLOW_TRANSCRIPTS), together with its subagents' transcripts in <id>/subagents/*.jsonl,
 which are labelled agent-<id> in column 2. Output, one line per tool call, sorted by time:
   <ts>\t<session[:8]>\t<tool>\t<command or path>\t<ok|error>\t<first line of result>
---say also prints what was said, so a reviewer can check the stated reasons and claims
+--say keeps whole commands (up to 20000 characters; a cut one ends in "…[截断，原文 N 字]")
+and also prints what was said, so a reviewer can check the stated reasons and claims
 against the calls: the assistant's text as tool "assistant", and what the user typed as tool
 "user" (injected meta messages and tool results left out; a background-task notice is
 "notice", and in a subagent transcript the message is the coordinator's "prompt"), the text
@@ -64,14 +65,15 @@ def text_of(v):
 def flat(v, n=1500):
     """The whole value on one line: newlines become ' ⏎ ', so later lines of a command stay visible."""
     s = str(v).strip().replace("\t", " ")
-    return " ⏎ ".join(l.strip() for l in s.splitlines() if l.strip())[:n]
+    s = " ⏎ ".join(l.strip() for l in s.splitlines() if l.strip())
+    return s if len(s) <= n else s[:n] + " …[截断，原文 %d 字]" % len(s)
 
 
-def describe(name, inp):
+def describe(name, inp, n=1500):
     for k in ("command", "file_path", "path", "pattern", "skill", "url", "query"):
         if k in inp:
-            return flat(inp[k])
-    return flat(json.dumps(inp, ensure_ascii=False))
+            return flat(inp[k], n)
+    return flat(json.dumps(inp, ensure_ascii=False), n)
 
 
 def said(e, content):
@@ -108,14 +110,14 @@ def rows(path, say=False):
                     who = "notice"
                 elif who == "user" and sid.startswith("agent-"):
                     who = "prompt"
-                out.append([e.get("timestamp", ""), sid, who, flat(text), "-", ""])
+                out.append([e.get("timestamp", ""), sid, who, flat(text, 8000), "-", ""])
         if not isinstance(content, list):
             continue
         for b in content:
             if b.get("type") == "tool_use":
                 inp = b.get("input") or {}
                 calls[b["id"]] = [e.get("timestamp", ""), sid, b.get("name", ""),
-                                  describe(b.get("name", ""), inp), "pending", "",
+                                  describe(b.get("name", ""), inp, 20000 if say else 1500), "pending", "",
                                   str(inp.get("command", ""))]
                 out.append(calls[b["id"]])
             elif b.get("type") == "tool_result" and b.get("tool_use_id") in calls:
