@@ -17,7 +17,7 @@ when a Codex update changes behavior.
 | Wait for a long command | background Bash, or Monitor | run it in the foreground with a long `timeout_ms`, or hand it to a worker and `wait_agent`; never poll with sleeps |
 | Repeat rounds (无人值守) | Skill `loop` with no interval | `create_goal`; each goal continuation is a Round. `update_goal` with `complete` (or `blocked`) at Close, `paused` at Pause. Measured: continuation runs only in an interactive session (app, IDE, TUI); `codex exec` aborts it after the first turn |
 | Notify the user | PushNotification | `scripts/notify.sh <message>` (a desktop notice, not a phone push) |
-| Cross-model review (allow 20 minutes) | `codex exec -s read-only`, prompt on stdin or with `</dev/null` | `claude -p --permission-mode plan`, prompt on stdin, as a foreground call with `timeout_ms` 1200000; needs network |
+| Cross-model review (allow 20 minutes) | `codex exec -s read-only`, prompt on stdin or with `</dev/null` | `claude -p --permission-mode plan`, prompt on stdin, through the shell tool (`exec_command`) in the foreground with `timeout_ms` 1200000; needs network. Never from the node REPL or another MCP tool: measured, `claude` there reports "Not logged in" |
 | Project skills | `.claude/skills/` | `.agents/skills/` or `.codex/skills/` (measured: `.claude/skills/` is not read) |
 | Global rule files (ask first) | `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | `~/.codex/AGENTS.md`, `~/.codex/config.toml` |
 | Never stop for a permission prompt (无人值守) | bypass permissions mode | approval `never` and a sandbox that can write the repo and `.git` and reach the network for review (`danger-full-access`, or `workspace-write` with network on) |
