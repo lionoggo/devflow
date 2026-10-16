@@ -42,6 +42,29 @@ for c in 'git switch -C "$(git branch --show-current)" abc123:False' "git switch
     r=$(python3 -I -c "import sys,re;sys.path.insert(0,'$here');import timeline;print(bool(timeline.DANGER.search(sys.argv[1])))" "${c%:*}")
     [ "$r" = "${c##*:}" ] && ok || bad "danger($c) = $r"
 done
+# Codex rollouts: thread id lookup, subagents by parent_thread_id, copied history skipped
+export DFLOW_CODEX_SESSIONS="$here/timeline-cases/codex"
+P=cccc0001-0000-7000-8000-000000000001
+c=$(python3 -I "$here/timeline.py" "$P"); rc=$?
+[ $rc = 0 ] && ok || bad "codex exit $rc"
+[ "$(echo "$c" | wc -l | tr -d ' ')" = 6 ] && ok || bad "codex row count: $c"
+echo "$c" | grep -q $'cccc0001\tBash\tgit status --short\tok\tM a.py' && ok || bad "codex exec_command row: $c"
+echo "$c" | grep -q $'cccc0001\tapply_patch\t/r/a.py /r/b.py\tok' && ok || bad "codex apply_patch row"
+echo "$c" | grep -q $'agent-cccc0002\tBash\tgit stash\tDANGER ok' && ok || bad "codex subagent danger"
+echo "$c" | grep -q $'git commit -qm x ⏎ git push origin HEAD\tDANGER error' && ok || bad "codex exit code 1 not error, or push missed"
+echo "$c" | grep -q 'git push origin main' && bad "codex: forked subagent's copied history counted" || ok
+echo "$c" | grep -q 'cccc0003' && bad "codex: unrelated thread pulled in" || ok
+cs=$(python3 -I "$here/timeline.py" --say "$P")
+echo "$cs" | grep -q $'\tuser\t开始\t-' && ok || bad "codex --say user"
+[ "$(echo "$cs" | grep -c $'\tuser\t')" = 1 ] && ok || bad "codex --say kept injected context: $cs"
+echo "$cs" | grep -q $'\tassistant\t改好了，测试通过。 ⏎ 下一步提交' && ok || bad "codex --say assistant"
+echo "$cs" | grep -q $'agent-cccc0002\tprompt\t实施单元 u1' && ok || bad "codex --say subagent prompt"
+echo "$cs" | grep -q $'\tnotice\tturn started by goal' && ok || bad "codex --say goal turn"
+echo "$cs" | grep -q $'\tnotice\t<subagent_notification>' && ok || bad "codex --say subagent notice"
+echo "$cs" | grep -q $'\tnotice\t<codex_internal_context source="goal">' && ok || bad "codex --say goal context not a notice"
+python3 -I "$here/timeline.py" --danger "$P" >/dev/null; [ $? = 1 ] && ok || bad "codex --danger exit"
+f=$(ls "$here"/timeline-cases/codex/2026/10/16/rollout-*-"$P".jsonl)
+[ "$(python3 -I "$here/timeline.py" "$f" | wc -l | tr -d ' ')" = 5 ] && ok || bad "codex path argument (parent only)"
 rm -rf "$here/__pycache__"
 echo "timeline-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]

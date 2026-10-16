@@ -7,9 +7,12 @@
 #   <slug>.tsv    decision log (scripts/log.sh); "commit <sha>" in the evidence column marks a logged commit
 #
 # Usage: run-state.sh claim|check|caffeinate|release|scope <slug>
-#   claim       take the lease for this session ($CLAUDE_CODE_SESSION_ID, $CLAUDE_PID);
-#               refused while another live claude process holds it; taking over a stale
-#               lease stops the previous owner's caffeinate
+#   claim       take the lease for this session; refused while another live agent process
+#               (claude or codex) holds it; taking over a stale lease stops the previous
+#               owner's caffeinate
+# Session: the nearest claude or codex process above this shell is the host; its session id
+#   is $CLAUDE_CODE_SESSION_ID or $CODEX_THREAD_ID and its pid is the owner pid.
+#   DFLOW_SESSION_ID and DFLOW_AGENT_PID override both (tests).
 #   check       per-round checks; exit 0 ok, 1 stop and report, 3 commits after the last logged
 #               one that no row names (one "UNLOGGED <sha>" line each, oldest first), 4 deadline passed
 #   caffeinate  start `caffeinate -i` until the deadline and record its pid in the lease
@@ -22,15 +25,35 @@ die() { echo "FAIL $*"; exit 1; }
 printf '%s' "$slug" | grep -Eq '^[a-z0-9][a-z0-9-]{0,62}$' || die "slug must match [a-z0-9][a-z0-9-]{0,62}: $slug"
 root=$(git rev-parse --show-toplevel 2>/dev/null) || die "not in a git repository"
 d="$root/.dflow"; man="$d/$slug.md"; lock="$d/$slug.lock"; lease="$lock/lease"; log="$d/$slug.tsv"
-me=${CLAUDE_CODE_SESSION_ID:-}; mypid=${CLAUDE_PID:-}
+host() { # host: "<claude|codex> <pid>" of the nearest agent process above this shell, or "none"
+    local p=$PPID c i=0
+    while [ "${p:-0}" -gt 1 ] && [ $i -lt 40 ]; do
+        c=$(basename "$(ps -o comm= -p "$p" 2>/dev/null)" 2>/dev/null)
+        case $c in claude|codex) echo "$c $p"; return ;; esac
+        p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' '); i=$((i + 1))
+    done
+    echo none
+}
+if [ -n "${DFLOW_SESSION_ID:-}" ]; then me=$DFLOW_SESSION_ID; mypid=${DFLOW_AGENT_PID:-}
+else
+    set -- $(host)
+    case $1 in
+    codex) me=${CODEX_THREAD_ID:-}; mypid=$2 ;;
+    claude) me=${CLAUDE_CODE_SESSION_ID:-}; mypid=${CLAUDE_PID:-$2} ;;
+    *) me=${CLAUDE_CODE_SESSION_ID:-${CODEX_THREAD_ID:-}}; mypid=${CLAUDE_PID:-} ;;
+    esac
+fi
 
 field() { # field <file> <key>: value from the leading key: value block
     awk -v k="$2" 'NF == 0 && seen { exit } /^[a-z0-9_]+: / { seen = 1; if (index($0, k ": ") == 1) { print substr($0, length(k) + 3); exit } }' "$1"
 }
 sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 epoch() { date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null || date -u -d "$1" +%s 2>/dev/null; }
-owner_comm=${DFLOW_OWNER_COMM:-claude}   # process name of a live owner; tests override it
-is_claude() { [ -n "$1" ] && kill -0 "$1" 2>/dev/null && [ "$(basename "$(ps -o comm= -p "$1" 2>/dev/null)")" = "$owner_comm" ]; }
+is_agent() { # a live claude or codex process (DFLOW_OWNER_COMM names a stand-in for tests)
+    [ -n "$1" ] && kill -0 "$1" 2>/dev/null || return 1
+    case $(basename "$(ps -o comm= -p "$1" 2>/dev/null)") in claude|codex|"${DFLOW_OWNER_COMM:-claude}") return 0 ;; esac
+    return 1
+}
 write_lease() {
     { echo "session: $me"; echo "pid: $mypid"; echo "manifest_sha256: $(sha "$man")"
       echo "claimed_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "caffeinate_pid: ${1:-}"; } > "$lease.tmp" && mv "$lease.tmp" "$lease"
@@ -43,7 +66,7 @@ need_manifest() {
 
 case $cmd in
 claim)
-    need_manifest; [ -n "$me" ] || die "CLAUDE_CODE_SESSION_ID is not set"
+    need_manifest; [ -n "$me" ] || die "no session id: run inside Claude Code or Codex (CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID)"
     mkdir -p "$d"
     if mkdir "$lock" 2>/dev/null; then write_lease; echo "ok claimed $slug"; exit 0; fi
     if [ ! -s "$lease" ]; then # another claim is between mkdir and writing the lease
@@ -52,7 +75,7 @@ claim)
     fi
     owner=$(field "$lease" session 2>/dev/null); opid=$(field "$lease" pid 2>/dev/null)
     if [ "$owner" = "$me" ]; then echo "ok already held by this session"; exit 0; fi
-    if is_claude "$opid"; then die "held by session $owner (claude pid $opid is alive); close it first"; fi
+    if is_agent "$opid"; then die "held by session $owner (agent pid $opid is alive); close it first"; fi
     ocp=$(field "$lease" caffeinate_pid 2>/dev/null) # the dead owner's caffeinate would run to the deadline
     if [ -n "$ocp" ] && ps -o comm= -p "$ocp" 2>/dev/null | grep -q caffeinate; then kill "$ocp" && echo "ok stopped the previous owner's caffeinate $ocp"; fi
     # Stale lease: rename is atomic, so only one taker wins.

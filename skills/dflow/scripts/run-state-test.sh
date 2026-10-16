@@ -25,7 +25,7 @@ protect: tests/*
 # 目标
 demo
 M
-export CLAUDE_CODE_SESSION_ID=s1 CLAUDE_PID=$$
+export DFLOW_SESSION_ID=s1 DFLOW_AGENT_PID=$$
 
 expect 1 "bad slug" "$rs" check "../x"
 expect 1 "check before claim" "$rs" check demo
@@ -36,7 +36,7 @@ expect 0 "check fresh" "$rs" check demo
 # a live process named claude holds the lease -> refused
 export DFLOW_OWNER_COMM=sleep   # stand-in for a live claude process
 sleep 60 & pids+=($!); cpid=$!
-CLAUDE_CODE_SESSION_ID=s2 CLAUDE_PID=$cpid "$rs" release demo >/dev/null 2>&1
+DFLOW_SESSION_ID=s2 DFLOW_AGENT_PID=$cpid "$rs" release demo >/dev/null 2>&1
 sed -i '' "s/^session: .*/session: s2/; s/^pid: .*/pid: $cpid/" .dflow/demo.lock/lease
 expect 1 "claim refused while claude alive" "$rs" claim demo
 # pid reused by a non-claude process -> takeover allowed
@@ -50,8 +50,8 @@ grep -q '^session: s1' .dflow/demo.lock/lease && ok || bad "lease not rewritten"
 if [ -n "${oldc:-}" ]; then sleep 0.3; kill -0 "$oldc" 2>/dev/null && { bad "previous owner's caffeinate left running"; kill "$oldc"; } || ok; fi
 
 # concurrent fresh claims: exactly one wins
-CLAUDE_CODE_SESSION_ID=s1 "$rs" release demo >/dev/null
-rp=(); for i in 1 2 3 4 5 6; do (CLAUDE_CODE_SESSION_ID=c$i CLAUDE_PID=$cpid "$rs" claim demo >/dev/null 2>&1 && echo won >> "$t/race") & rp+=($!); done; wait "${rp[@]}"; touch "$t/race"
+DFLOW_SESSION_ID=s1 "$rs" release demo >/dev/null
+rp=(); for i in 1 2 3 4 5 6; do (DFLOW_SESSION_ID=c$i DFLOW_AGENT_PID=$cpid "$rs" claim demo >/dev/null 2>&1 && echo won >> "$t/race") & rp+=($!); done; wait "${rp[@]}"; touch "$t/race"
 kill "${pids[@]}" 2>/dev/null; pids=()
 [ "$(grep -c won "$t/race")" = 1 ] && ok || bad "concurrent claims: $(grep -c won "$t/race") won"
 rm -rf .dflow/demo.lock; expect 0 "claim again" "$rs" claim demo
@@ -107,6 +107,31 @@ if command -v caffeinate >/dev/null; then
     kill -0 "$other" 2>/dev/null && ok || bad "other caffeinate was stopped"
     kill "$other" 2>/dev/null
     [ -d .dflow/demo.lock ] && bad "lock left after release" || ok
+fi
+# host detection: under a process named codex, the lease takes $CODEX_THREAD_ID and that pid
+rm -rf .dflow/demo.lock
+# A copy of a shell named codex/claude stands in for the agent; macOS kills copies of /bin
+# binaries, so take the first bash on PATH that still runs when copied, else skip.
+mkdir -p "$t/bin"; fake=""
+for b in $(which -a bash) /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    cp "$b" "$t/bin/codex" 2>/dev/null && [ "$("$t/bin/codex" -c 'echo ok' 2>/dev/null)" = ok ] && { fake=$b; break; }
+done
+if [ -z "$fake" ]; then echo "skip host-detection tests: no copyable bash"; else
+cp "$fake" "$t/bin/claude"
+out=$(env -u DFLOW_SESSION_ID -u DFLOW_AGENT_PID CODEX_THREAD_ID=th-1 CLAUDE_CODE_SESSION_ID=inherited \
+    "$t/bin/codex" -c "\"$rs\" claim demo; echo pid=\$\$; true" 2>&1)
+lp=$(sed -n 's/^pid: //p' .dflow/demo.lock/lease)
+grep -q '^session: th-1$' .dflow/demo.lock/lease && ok || bad "codex host: lease session not CODEX_THREAD_ID: $out"
+[ "pid=$lp" = "$(printf '%s\n' "$out" | grep '^pid=')" ] && ok || bad "codex host: lease pid $lp is not the codex process ($out)"
+rm -rf .dflow/demo.lock
+out=$(env -u DFLOW_SESSION_ID -u DFLOW_AGENT_PID -u CLAUDE_PID CODEX_THREAD_ID=inherited CLAUDE_CODE_SESSION_ID=cs-1 \
+    "$t/bin/claude" -c "\"$rs\" claim demo" 2>&1)
+grep -q '^session: cs-1$' .dflow/demo.lock/lease && ok || bad "claude host: lease session not CLAUDE_CODE_SESSION_ID: $out"
+# a live codex owner blocks a takeover like a live claude one
+"$t/bin/codex" -c 'sleep 30; true' & pids+=($!); xp=$!
+sed -i '' "s/^pid: .*/pid: $xp/; s/^session: .*/session: other/" .dflow/demo.lock/lease
+DFLOW_OWNER_COMM=none expect 1 "claim refused while a codex owner is alive" "$rs" claim demo
+kill "$xp" 2>/dev/null; rm -rf .dflow/demo.lock
 fi
 echo "run-state-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]

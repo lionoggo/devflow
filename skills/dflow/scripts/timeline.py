@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""Merge Claude Code transcripts into one tool-call timeline for an unattended-run closeout.
+"""Merge Claude Code or Codex transcripts into one tool-call timeline for a closeout or 复盘.
 
 Usage: python3 -I timeline.py [--danger | --say] <session-id or transcript.jsonl>...
 A session id is looked up as ~/.claude/projects/*/<id>.jsonl (override the root with
 DFLOW_TRANSCRIPTS), together with its subagents' transcripts in <id>/subagents/*.jsonl,
-which are labelled agent-<id> in column 2. Output, one line per tool call, sorted by time:
+which are labelled agent-<id> in column 2. Failing that, it is a Codex thread id, looked up
+as ~/.codex/sessions/*/*/*/rollout-*-<id>.jsonl (override with DFLOW_CODEX_SESSIONS), together
+with every rollout whose parent_thread_id leads back to it (subagents, labelled
+agent-<id[:8]>; the parent history a forked subagent starts with is skipped). Codex shell
+calls (exec_command) are labelled Bash like Claude's, so the DANGER check covers both.
+Output, one line per tool call, sorted by time:
   <ts>\t<session[:8]>\t<tool>\t<command or path>\t<ok|error>\t<first line of result>
 --say keeps whole commands (up to 20000 characters; a cut one ends in "…[截断，原文 N 字]")
 and also prints what was said, so a reviewer can check the stated reasons and claims
 against the calls: the assistant's text as tool "assistant", and what the user typed as tool
 "user" (injected meta messages and tool results left out; a background-task notice is
-"notice", and in a subagent transcript the message is the coordinator's "prompt"), the text
+"notice", as is a Codex turn the user did not start, such as a goal continuation; in a
+subagent transcript the message is the coordinator's "prompt"), the text
 in column 4, "-" in column 5. With --say, column 6 holds the first 400 characters of each
 result instead of its first line, since a check's verdict is often not on its first line.
 A call that matches an action the unattended playbook forbids is marked DANGER in column 5.
@@ -37,16 +43,47 @@ DANGER = re.compile(
 SANCTIONED = re.compile(r"(\S*/)?parallel\.sh\s+(land|cleanup)\s+[a-z0-9-]+(\s+[A-Za-z0-9_.-]+)?")
 
 
+def codex_meta(path):
+    """The session_meta payload of a Codex rollout, or None for any other file."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            e = json.loads(f.readline())
+    except (OSError, ValueError):
+        return None
+    return e.get("payload") if isinstance(e, dict) and e.get("type") == "session_meta" else None
+
+
+def codex_children(root, tid, since):
+    """Rollouts under root whose parent_thread_id is tid, then theirs, in file-name order."""
+    found, todo = [], [tid]
+    files = [f for f in glob.glob(os.path.join(root, "*", "*", "*", "rollout-*.jsonl"))
+             if os.path.basename(f) >= since]
+    parents = {}
+    for f in files:
+        m = codex_meta(f) or {}
+        if m.get("parent_thread_id"):
+            parents.setdefault(m["parent_thread_id"], []).append((f, m.get("id", "")))
+    while todo:
+        for f, cid in sorted(parents.get(todo.pop(), [])):
+            found.append(f)
+            todo.append(cid)
+    return found
+
+
 def locate(arg):
     """Transcript paths for a .jsonl path or a session id (plus its subagents)."""
     if arg.endswith(".jsonl") and os.path.exists(arg):
         return [arg]
     root = os.environ.get("DFLOW_TRANSCRIPTS", os.path.expanduser("~/.claude/projects"))
     hits = glob.glob(os.path.join(root, "*", arg + ".jsonl"))
+    if hits:
+        subs = sorted(glob.glob(os.path.join(hits[0][:-6], "subagents", "*.jsonl")))
+        return hits[:1] + subs
+    croot = os.environ.get("DFLOW_CODEX_SESSIONS", os.path.expanduser("~/.codex/sessions"))
+    hits = sorted(glob.glob(os.path.join(croot, "*", "*", "*", "rollout-*-" + arg + ".jsonl")))
     if not hits:
         return []
-    subs = sorted(glob.glob(os.path.join(hits[0][:-6], "subagents", "*.jsonl")))
-    return hits[:1] + subs
+    return hits[:1] + codex_children(croot, arg, os.path.basename(hits[0])[:len("rollout-2026-01-01")])
 
 
 def one_line(v, n=160):
@@ -90,7 +127,100 @@ def said(e, content):
     return []
 
 
+# Context Codex injects as user messages; not something the user typed.
+CODEX_INJECTED = ("<environment_context>", "<user_instructions>", "<permissions", "# AGENTS.md",
+                  "<skills_instructions>", "<collaboration_mode>", "<personality")
+
+
+# Messages Codex itself sends in the user role: a goal continuation, a subagent finishing, an interrupt.
+CODEX_NOTICES = ("<codex_internal_context", "<subagent_notification>", "<turn_aborted>")
+
+
+def codex_text(content):
+    return " ".join(b.get("text", "") for b in content or [] if isinstance(b, dict)
+                    and b.get("type") in ("input_text", "output_text", "text"))
+
+
+def codex_status(output):
+    """(ok|error, result text) from a Codex tool output's header and body."""
+    out = output if isinstance(output, str) else json.dumps(output, ensure_ascii=False)
+    m = re.search(r"^(?:Process exited with code|Exit code:) (-?\d+)\s*$", out, re.M)
+    body = out.split("\nOutput:\n", 1)[1] if "\nOutput:\n" in out else out
+    return ("error" if m and m.group(1) != "0" else "ok"), body
+
+
+def codex_describe(name, args, n):
+    if name == "apply_patch":
+        files = re.findall(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", str(args), re.M)
+        return flat(" ".join(files) or str(args), n)
+    if isinstance(args, dict):
+        for k in ("cmd", "command", "path", "message", "objective", "target", "targets", "query"):
+            if k in args:
+                v = args[k]
+                return flat(" ".join(v) if isinstance(v, list) and k in ("cmd", "command") else v, n)
+        return flat(json.dumps(args, ensure_ascii=False), n)
+    return flat(args, n)
+
+
+def codex_rows(path, meta, say):
+    calls, out = {}, []
+    sub = meta.get("thread_source") == "subagent" or bool(meta.get("parent_thread_id"))
+    sid = ("agent-" if sub else "") + str(meta.get("id", os.path.basename(path)))[:8]
+    start = meta.get("subagent_history_start_ordinal", 0) if sub else 0
+    first_user = True
+    for line in open(path, encoding="utf-8"):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(e, dict) or e.get("ordinal", start) < start:
+            continue  # a forked subagent's copy of its parent's history
+        p, ts = e.get("payload") or {}, e.get("timestamp", "")
+        kind = p.get("type")
+        if e.get("type") == "event_msg" and kind == "task_started" and say:
+            trig = (p.get("turn_attribution") or {}).get("turn_trigger", "user")
+            if trig != "user":
+                out.append([ts, sid, "notice", "turn started by " + trig, "-", ""])
+        if e.get("type") != "response_item":
+            continue
+        if kind == "message" and say:
+            role, text = p.get("role"), codex_text(p.get("content"))
+            if not text.strip() or role not in ("user", "assistant"):
+                continue
+            if role == "user":
+                if text.lstrip().startswith(CODEX_INJECTED):
+                    continue
+                who = "notice" if text.lstrip().startswith(CODEX_NOTICES) else \
+                    ("prompt" if sub and first_user else "user")
+                first_user = False
+            else:
+                who = "assistant"
+            out.append([ts, sid, who, flat(text, 8000), "-", ""])
+        elif kind in ("function_call", "custom_tool_call"):
+            name = p.get("name", "")
+            args = p.get("input", "")
+            if kind == "function_call":
+                try:
+                    args = json.loads(p.get("arguments") or "{}")
+                except ValueError:
+                    args = p.get("arguments", "")
+            label = "Bash" if name in ("exec_command", "shell", "local_shell") else name
+            desc = codex_describe(name, args, 20000 if say else 1500)
+            full = codex_describe(name, args, 10 ** 9) if label == "Bash" else ""
+            calls[p.get("call_id")] = [ts, sid, label, desc, "pending", "", full]
+            out.append(calls[p.get("call_id")])
+        elif kind in ("function_call_output", "custom_tool_call_output") and p.get("call_id") in calls:
+            c = calls[p["call_id"]]
+            c[4], body = codex_status(p.get("output", ""))
+            c[5] = flat(body, 400) if say else one_line(body)
+    return out
+
+
 def rows(path, say=False):
+    meta = codex_meta(path)
+    if meta is not None:
+        out = codex_rows(path, meta, say)
+        return mark(out)
     calls, out = {}, []
     for line in open(path, encoding="utf-8"):
         try:
@@ -124,11 +254,14 @@ def rows(path, say=False):
                 c = calls[b["tool_use_id"]]
                 c[4] = "error" if b.get("is_error") else "ok"
                 c[5] = flat(text_of(b.get("content", "")), 400) if say else one_line(b.get("content", ""))
+    return mark(out)
+
+
+def mark(out):
     for c in out:
-        if c[2] == "Bash" and DANGER.search(SANCTIONED.sub(" ", c.pop())):  # full command, minus the sanctioned call
+        full = c.pop() if len(c) == 7 else ""
+        if c[2] == "Bash" and DANGER.search(SANCTIONED.sub(" ", full)):  # full command, minus the sanctioned call
             c[4] = "DANGER " + c[4]
-        elif len(c) == 7:
-            c.pop()
     return out
 
 
