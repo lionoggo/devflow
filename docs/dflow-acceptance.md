@@ -64,3 +64,22 @@
 ## 并行实施（2026-10-15）
 
 方案：`docs/plan-dflow-parallel.md`；详细记录：`docs/acceptance/parallel/README.md`。P1–P8 通过，其中冲突和越界只在脚本测试里覆盖。P9 成本对比：同一方案顺序做 110 秒、$0.58，并行做 503 秒、$1.94，证明小单元不适合并行；大单元的收益还没有实测。
+
+## Codex 支持（2026-10-16）
+
+目标：dflow 在 Claude Code 里能做的事，在 Codex 里也能做。做法：脚本按宿主识别会话；两边不同的工具写进 `skills/dflow/references/hosts.md` 的对照表，各流程只在有差异处引用它。环境：Codex CLI 0.162.1（交互界面在 tmux 里运行）和 0.162.1 的 `codex exec`，审批 `never`，沙箱 `danger-full-access`，与用户平时一致。演示仓库是 scratchpad 里的 `codex-port/e2e`（只有 `add`、`sub` 的小计算器），没有远端。
+
+| 项 | 请求 | 结果 |
+|---|---|---|
+| 循环机制 | 交互式 Codex 里设 goal，每轮追加一行 | **通过**。goal 未完成时自动开下一轮，3 轮后标记完成并停下；`codex exec` 下第二轮被中止，所以无人值守只在交互式会话里跑 |
+| 无人值守 | `$dflow 无人值守 add-math…`，再回"开始" | **通过**（第 4 次）。前 3 次发现并修好：Frame 没停下等"开始"；没建 `dflow/<slug>` 分支；caffeinate 随命令结束被杀（改为新会话启动）；审查调用只给 60 秒；没发通知。第 4 次：Frame 停下，建了分支，租约记的是 Codex 会话 ID 和 codex 进程，caffeinate 全程存活、释放时停止，桌面通知发出，goal 在收尾时完成 |
+| 复盘 | `$dflow 复盘 add-math3`（`codex exec`） | **通过**（第 3 次）。读出了 Codex 会话记录，格式符合复盘模板。前两次审查失败：一次 agent 改用 node REPL 启动 `claude`，那里未登录；一次自己定了 60 秒上限。改为 `scripts/review.sh start/wait` 后拿到 Claude 的审查；又因计划模式会写 `~/.claude/plans/`，审查者改为只给读文件工具 |
+| 并行 | `$dflow 实施，并行…` 两个独立单元 | **有条件通过**。请求里明说同意建 worktree 时，单元表、`parallel.sh worktree`、两个子 agent 同时工作、逐个落地、`cleanup` 全部走通，危险命令扫描无误报。只说"并行"时，Codex 按全局 AGENTS.md 的 worktree 规则拒绝建 worktree，改在共享工作区里同时改（违反流程）。吞吐检查的提议句已改为"说'并行'即同意为这 N 个单元各建一个 worktree" |
+| 复杂调研 | `$dflow 调研（按复杂问题处理）…` | **通过**。并行派 2 个只读探索子 agent，`wait_agent` 收回，主 agent 复读主路径后汇总。交叉审查因请求写了"不改仓库文件"而跳过，原因如实写出 |
+| 验收的新鲜验证者 | 并行两次运行中 | **通过**。主 agent 用 `spawn_agent` 起只读验收子 agent，只给标准和候选 |
+| timeline | 上述各次 Codex 会话 | **通过**。命令、补丁、子 agent、goal 续跑（显示为 notice）、skill 注入（跳过）都识别正确；子 agent 继承的父会话历史被跳过；同一分钟启动的子 agent 不再同名 |
+| 讲解、评审、排错、方案等 | 无单独请求 | 只测了讲解（14:18 的 `codex exec`）。其余流程不含宿主专有工具，交叉审查走同一个 `review.sh` |
+
+没有测到的：Codex 里的暂停与接管、无人值守加并行的组合、手机推送（Codex 只有桌面通知）。
+
+脚本测试：run-state 37、timeline 54、parallel 34、review 7，全部通过。`review-test` 在完整测试集里偶发过一次失败（等待 20 秒仍未结束），之后连续 7 次未复现；已放宽等待并在失败时打印进程状态。
