@@ -44,13 +44,16 @@ reruns, danger scan, log matching) stays in `retro.md`. Then end with:
 
 ```text
 **需要你注意**
-审查：<模型>（没审就写"未审查：<原因>"）
-- P1 <影响>。见日志 <时间> / 代码检查 <path:line>。
+审查：<模型>
+- <影响>。见日志 <时间> / 代码检查 <path:line>。
 - 未核实：<哪条说法，缺什么>。
 详情：<retro dir>/retro.md
 ```
 
-Each item is at most two sentences: the impact, then the pointer. How it
-happens, how to fix it, and why it did no harm this time stay in the review. Only P1s, 未核实 claims, danger-scan hits, and
-a lesson worth 调优 go here; P2s and the rest stay in `retro.md`. Nothing
-to flag: `审查：<模型>，无`.
+The 审查 line is the model name only (or `未审查：<原因>`); whether it was rerun or
+reused goes in `retro.md`. Items carry no P1 label, since only P1-level
+issues go here. Each item is at most two sentences: the impact, then the
+pointer. How it happens, how to fix it, and why it did no harm this time
+stay in the review. Only P1s, 未核实 claims, danger-scan hits, and a lesson
+worth 调优 go here; P2s and the rest stay in `retro.md`. Nothing to flag:
+`审查：<模型>，无`.
