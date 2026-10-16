@@ -36,8 +36,10 @@ changes, how to check it), not the full shape.
      方案"): say the cost first (about three times one run, 10–20 minutes).
      Write 3–6 criteria. Write one fixed candidate prompt (task plus the same
      evidence paths, no existing recommendation, no mention of the other
-     candidate) and give it verbatim to a Claude subagent and to
-     `codex exec -s read-only`, each writing to its own scratch directory;
+     candidate) and give it verbatim to a subagent of this host and to the
+     other model (from Claude `codex exec -s read-only`; from Codex
+     `scripts/review.sh start`, per `references/hosts.md`), each answer saved
+     to its own scratch file;
      record the prompt's SHA-256. Judge both yourself against the criteria
      (simplified pstack `arena`: no separate judge), pick a base, graft one or
      two strengths with their source. Two wholly different answers mean the

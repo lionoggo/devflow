@@ -16,7 +16,7 @@ Write four items:
 3. **Shared files**: anything two units would both edit (README, registries,
    `__init__`, a shared test entry). Take them out of the units; you edit them
    after every unit lands.
-4. **Verdict**: "并行：可拆 N 路（单元 …），预计多花约 X、墙钟约省 Y（暂定估算）。说"并行"即可启用", or "并行：不适合，<原因>".
+4. **Verdict**: "并行：可拆 N 路（单元 …），预计多花约 X、墙钟约省 Y（暂定估算）。说"并行"即同意为这 N 个单元各建一个 worktree，落地后删除", or "并行：不适合，<原因>".
 
 Suggest it only with at least two independent units, each over about 50
 changed lines or a check over about 2 minutes (provisional thresholds).
