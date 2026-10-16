@@ -29,51 +29,28 @@ deserves a look first, then the rows it points at. Read-only.** From pstack
    on the same log and HEAD; one from another conversation is rerun, since
    the tools or rules may have changed since, unless the user says to skip
    it. Unavailable: 未审查：<原因>.
-6. A mistake that shows up twice in the trail goes under 值得记下的教训 with
-   an offer to run 调优; do not edit skills here.
+6. A mistake that shows up twice in the trail is a lesson; offer 调优 for
+   it, do not edit skills here.
+7. Write everything you checked to `<retro dir>/retro.md`: verification
+   (what ran, on which commit, what was reused and why), each log mismatch,
+   the danger scan, P2 findings, lessons, and the full review's path. This
+   file is where the detail lives; the reply only points at it.
 
-**Reply:** fixed order, sections only when they have content. The first
-two lines answer "how did it go" and "do I need to act"; what you decide
-comes before the full flag list. Each fact is told once: decisions say the
-choice, flags say the fact, 核对 says how far the trail can be trusted,
-教训 adds only the pattern. Hard limits:
-- 审查 is one short line: the model, and 复用 when reused. Why reuse was
-  allowed goes under 核对.
-- Any P1 flag: the second line says `需要你：先看下面 <n> 个 P1` (plus any
-  decision), never 无需操作. The summary is the agent's own; it must not
-  talk the reader out of the review.
-- 等你决定 names each thing in words, never "第 1、2 项".
-- 需要你注意 holds P1s and anything that bears on a decision, at most two
-  sentences each: the impact and when it happens. No mechanism, no fix
-  steps; those stay in the full review. P2s go under 其他发现, one line each.
-- A flag points at a log row or moment; one found only by reading current
-  code says 代码检查 <path:line>.
+**Reply:** as pstack does. A short summary in your own words (how the run
+went, what is still open, what the user needs to decide), written per
+**Reply** in `SKILL.md`; no fixed lines or headings. It never says nothing
+needs the user while the section below has a P1. How you checked (review
+reruns, danger scan, log matching) stays in `retro.md`. Then end with:
 
 ```text
-<完成 / 部分完成 / 受阻 / 仍在运行>。<做成了什么、没做成什么，一句话>。共 <n> 个提交。
-需要你：<无需操作（有 P1 时不能这样写）/ 先看下面 n 个 P1 / 决定什么 / 提供什么，一句话>。
-
-**等你决定**（有才写）
-- <事项>。<现在保持什么，不决定会怎样>。
-
 **需要你注意**
-审查：<模型>[，复用]（没审就写"未审查：<原因>"）
-- P1 <影响>。<何时触发或现状>。见日志 <时间> / 代码检查 <位置>。
-（没有就写"审查：<模型>，无发现"，与上一行合并）
-
-**核对**
-- 验证：<关键结果；重跑了什么；哪部分未核实及原因；审查复用的依据>
-- 日志：<全部对得上 / 哪几行对不上>。危险命令扫描：<未命中 / 哪几条，是否正当>
-- 其他发现：<P2 和不影响眼前决定的问题，一行一条，指向证据；没有就省略>
-- 教训：<同一类问题出现两次的，只写归纳，问要不要走调优；没有就省略>
-详情：<.dflow/<slug>.tsv>，先看 <上面指到的时间>；完整审查 <路径>。
+审查：<模型>（没审就写"未审查：<原因>"）
+- P1 <影响>。见日志 <时间> / 代码检查 <path:line>。
+- 未核实：<哪条说法，缺什么>。
+详情：<retro dir>/retro.md
 ```
 
-Everything normal (goal met, checks pass, trail matches, review ran with no
-flags) is three lines:
-
-```text
-已完成，验证通过。共 <n> 个提交。无需你操作。
-审查：<模型>，无发现。日志核对一致，危险命令扫描未命中。
-详情：<.dflow/<slug>.tsv>。
-```
+Each item is at most two sentences: the impact, then the pointer. How it
+happens, how to fix it, and why it did no harm this time stay in the review. Only P1s, 未核实 claims, danger-scan hits, and
+a lesson worth 调优 go here; P2s and the rest stay in `retro.md`. Nothing
+to flag: `审查：<模型>，无`.
