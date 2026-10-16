@@ -14,14 +14,15 @@ Principles: 真实证据, 对齐目标, 不停下等人.
 2. Pick who verifies. A cross-module or high-risk change (a public contract,
    stored data, money, concurrency; user-facing alone is not enough) that
    this session built: start one subagent without edit tools (the Explore
-   type, model `sonnet`), give it only the criteria and the candidate (diff
+   type, model `sonnet`; in Codex the verifier row of `references/hosts.md`), give it only the criteria and the candidate (diff
    or commits), never your implementation reasoning, and have it run the
    evidence; then check its evidence yourself before using it. Long context
    or the user asks: a new session through 交接 (`playbooks/handoff.md`).
    Otherwise verify here, judging only from evidence observed in this
    playbook, not from reasoning made while building.
 3. Find the driver for the real usage path. If the project has a verification
-   skill (`.claude/skills/verify-*` or one named in its docs), use it.
+   skill (`.agents/skills/verify-*`, `.claude/skills/verify-*`, or one named
+   in its docs), use it.
    Otherwise use the existing harness (Playwright, CLI, curl, game runner).
    When a user-facing project has none, say so in the reply and offer to
    generate one with `references/create-verification-skill.md`.

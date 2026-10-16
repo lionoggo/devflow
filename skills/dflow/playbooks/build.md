@@ -40,7 +40,8 @@ result without stopping.** From devflow-impl and pstack `feature`. Principles:
    **After any change**: smoke beyond the main check and write the 影响面
    line.
 
-Delegation: one subagent per independent slice only when it cuts total cost;
+Delegation: one subagent per independent slice only when it cuts total cost
+(in Codex, `spawn_agent` per `references/hosts.md`);
 give it the scope, the data shape, and the check; review its diff yourself.
 
 **Reply:**

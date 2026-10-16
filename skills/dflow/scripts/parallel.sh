@@ -8,6 +8,9 @@
 # Usage: parallel.sh <command> <slug> [id]
 #   prepare  <slug>       exclude .claude/worktrees/ and .dflow/; require a clean tree; create the table
 #   overlap  <slug>       unit paths pairwise disjoint, inside the manifest's allow, outside protect
+#   worktree <slug> <id>  for a host whose subagents have no worktree isolation (Codex): create
+#                         .dflow/worktrees/<slug>-<id> on branch dflow-unit/<slug>-<id> at the
+#                         unit's base; prints the path and branch for the brief and the table
 #   scope    <slug> <id>  base is an ancestor of the unit branch; every changed file is in the unit's paths
 #   land     <slug> <id>  clean tree + ancestor check, then `cherry-pick -n base..branch`; on conflict abort
 #   unland   <slug> <id>  undo an uncommitted land: unstage and restore changed files, delete added ones
@@ -108,6 +111,21 @@ land)
         echo "${conflicts:-$err}"
         exit 1
     fi ;;
+worktree)
+    need_table; [ -n "$uid" ] || usage
+    [ -n "$(col "$uid" id)" ] || die "unit $uid not in $table"
+    base=$(col "$uid" base); [ -n "$base" ] && [ "$base" != - ] || die "unit $uid has no base; set it to the current HEAD first"
+    git rev-parse -q --verify "$base^{commit}" >/dev/null || die "base $base not found"
+    wt="$root/.dflow/worktrees/$slug-$uid"; br="dflow-unit/$slug-$uid"
+    have=$(git worktree list --porcelain | awk -v w="$wt" '$0=="worktree "w{f=1;next} f&&/^branch /{print substr($0,19);exit} /^$/{f=0}')
+    if [ -n "$have" ]; then
+        [ "$have" = "$br" ] || die "$wt exists on branch $have"
+        echo "ok worktree $wt branch $br (already there)"; exit 0
+    fi
+    git rev-parse -q --verify "refs/heads/$br" >/dev/null && die "branch $br already exists; a sent-back unit gets a new id or cleanup first"
+    mkdir -p "$root/.dflow/worktrees"
+    git worktree add -q -b "$br" "$wt" "$base" || die "git worktree add failed"
+    echo "ok worktree $wt branch $br" ;;
 unland)
     need_table; [ -n "$uid" ] || usage
     added=$(git diff --cached --name-only --diff-filter=A)
@@ -144,7 +162,7 @@ cleanup)
     reg=$(awk -F'\t' 'NR > 1 { print $7 }' "$table")
     printf '%s\n' "$(git worktree list --porcelain)" | awk '/^worktree /{w=substr($0,10)} /^branch /{print w"\t"substr($0,19)}' |
     while IFS=$'\t' read -r w b; do
-        case $w in */.claude/worktrees/*) ;; *) continue ;; esac
+        case $w in */.claude/worktrees/*|*/.dflow/worktrees/*) ;; *) continue ;; esac
         printf '%s\n' "$reg" | grep -qxF "$b" && continue
         echo "ORPHAN $w ($b): not in the unit table; left in place, $(git -C "$w" status --porcelain | wc -l | tr -d ' ') uncommitted path(s)"
     done

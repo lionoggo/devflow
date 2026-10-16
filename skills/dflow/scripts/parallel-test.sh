@@ -77,6 +77,26 @@ echo "$out" | grep -q "scratch.log" && ok || bad "untracked file not listed: $ou
 echo "$out" | grep -q "ORPHAN .*agent-zz" && [ -d .claude/worktrees/agent-zz ] && ok || bad "orphan not listed or removed: $out"
 echo "$out" | grep -q "ORPHAN .*other" && bad "non-.claude worktree listed as orphan" || ok
 
+# worktree: a Codex-style unit gets its own worktree at its base, idempotent, and cleanup removes it
+printf 'w1\t-\tapp/w.py\tdispatched\t%s\t-\t-\t-\t0\t-\n' "$base" >> .dflow/demo.units.tsv
+printf 'w2\t-\tapp/v.py\tplanned\t-\t-\t-\t-\t0\t-\n' >> .dflow/demo.units.tsv
+out=$("$ps" worktree demo w1); rc=$?
+wt="$r/.dflow/worktrees/demo-w1"
+[ $rc = 0 ] && [ -d "$wt" ] && [ "$(git -C "$wt" rev-parse HEAD)" = "$base" ] && [ "$(git -C "$wt" branch --show-current)" = dflow-unit/demo-w1 ] && ok || bad "worktree not created at base: $out"
+expect 0 "worktree again is a no-op" "$ps" worktree demo w1
+expect 1 "worktree without a base" "$ps" worktree demo w2
+[ -z "$(git status --porcelain --untracked-files=all | grep -v ' \.dflow/' | grep -v ' \.claude/worktrees/')" ] && ok || bad "worktree left the main tree dirty"
+( cd "$wt"; echo W > app/w.py; git add -A; git commit -qm "unit w1" )
+awk -F'\t' -v OFS='\t' 'NR>1 && $1=="w1"{$7="dflow-unit/demo-w1"} {print}' .dflow/demo.units.tsv > .dflow/x && mv .dflow/x .dflow/demo.units.tsv
+expect 0 "scope w1" "$ps" scope demo w1
+git worktree add -q -b dflow-unit/demo-zz .dflow/worktrees/demo-zz "$base"
+out=$("$ps" cleanup demo)
+echo "$out" | grep -q "KEEP w1" && ok || bad "unlanded codex unit not kept: $out"
+echo "$out" | grep -q "ORPHAN .*demo-zz" && ok || bad "orphan under .dflow/worktrees not listed: $out"
+awk -F'\t' -v OFS='\t' 'NR>1 && $1=="w1"{$4="landed"} {print}' .dflow/demo.units.tsv > .dflow/x && mv .dflow/x .dflow/demo.units.tsv
+"$ps" cleanup demo >/dev/null
+[ ! -d "$wt" ] && ! git rev-parse -q --verify dflow-unit/demo-w1 >/dev/null && ok || bad "landed codex unit not removed"
+
 expect 2 "usage" "$ps"
 expect 1 "bad slug" "$ps" overlap "../x"
 echo "parallel-test: $pass passed, $fail failed"

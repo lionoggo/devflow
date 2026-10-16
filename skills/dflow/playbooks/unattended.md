@@ -7,11 +7,12 @@ Orchestrate's gates. Principles: 不停下等人, 小步可验证, 真实证据,
 
 `$S` below is this skill's directory. Run files live in `<repo>/.dflow/` and
 are never committed: `<slug>.md` (manifest), `<slug>.lock/` (lease),
-`<slug>.tsv` (log). The slug matches `[a-z0-9][a-z0-9-]{0,62}`.
+`<slug>.tsv` (log). The slug matches `[a-z0-9][a-z0-9-]{0,62}`. In Codex,
+the loop, waits, and notifications follow `references/hosts.md`.
 
 Which part to run: "继续无人值守 <slug>" is **Pickup** when this session does
-not hold the lease, and **Round** when it does (that is how `/loop` wakes
-you). "暂停", "先停一下", "我要重启" is **Pause**. "去睡了", "别停" never
+not hold the lease, and **Round** when it does (that is how a `/loop` wake,
+or a goal continuation in Codex, reaches you). "暂停", "先停一下", "我要重启" is **Pause**. "去睡了", "别停" never
 pause. Anything else starts at **Frame**.
 
 ## Frame (the one stop)
@@ -51,7 +52,8 @@ can run.
    with its default, so the user can change it here.
 7. **Deadline**: default 8 hours from start, as an absolute UTC time. A pickup
    never restarts it.
-8. **Environment**: needs a mode that never stops for a permission prompt;
+8. **Environment**: needs a mode that never stops for a permission prompt
+   (`references/hosts.md`);
    `caffeinate` keeps the Mac awake; do not edit this repo by hand while it
    runs (say "暂停" first). First unattended run of this kind: suggest the
    user watch the first two rounds.
@@ -61,7 +63,9 @@ can run.
    approves the worktrees `parallel.sh` creates and removes.
 10. **Start line**: check that the Skill tool can call `loop`. If it cannot,
    tell the user to reply with `/loop /dflow 继续无人值守 <slug>` instead of
-   "开始", and do steps 1–5 below when that arrives.
+   "开始", and do steps 1–5 below when that arrives. In Codex the start line
+   is "开始", but the session must be interactive (app, IDE, or TUI): in
+   `codex exec` say the loop cannot run there and stop.
 
 On "开始":
 1. Re-check HEAD, the tree, and each baseline output. Anything changed since
@@ -80,16 +84,19 @@ On "开始":
 5. Log `start` (`$S/scripts/log.sh .dflow/<slug>.tsv start …`): evidence holds
    the base SHA, a hash of `git ls-remote` (or the local remote's
    `show-ref`), the SHA-256 of each `.dflow/<slug>-<name>` check script (Git
-   does not see them), and the full `$CLAUDE_CODE_SESSION_ID`.
+   does not see them), and the full session id.
 6. Start the loop: Skill `loop` with args `/dflow 继续无人值守 <slug>`, no
-   interval (dynamic). Then run the first round now.
+   interval (dynamic). In Codex: `create_goal` with the objective
+   `dflow 无人值守 <slug>：每次继续都是 <this file's absolute path> 的一个 Round，只经 Close 或 Pause 结束`
+   and no token budget. Then run the first round now.
 
 ## Round
 
-Every wake-up is a Round: a `/loop` wake, or a parallel worker's completion
-notification. In a parallel run, a Round handles arrived completions per
-`references/parallel.md`; while workers are still running, a `/loop` wake
-dispatches nothing new.
+Every wake-up is a Round: a `/loop` wake or goal continuation, or a parallel
+worker's completion notification. In a parallel run, a Round handles arrived
+completions per `references/parallel.md`; while workers are still running, a
+`/loop` wake dispatches nothing new. In Codex, workers do not wake you: a
+Round with workers running ends in `wait_agent` on them.
 
 1. `$S/scripts/run-state.sh check <slug>`:
    - exit 0: go on;
@@ -97,8 +104,8 @@ dispatches nothing new.
      checks; pass, log one row naming each as `commit <sha>`; fail,
      `git revert --no-edit` them newest first and log a no-progress round;
    - exit 4: deadline passed, go to **Close**;
-   - exit 1 with "lease held by" another session: stop your loop, write
-     nothing;
+   - exit 1 with "lease held by" another session: stop your loop (Codex:
+     `update_goal` `blocked`), write nothing;
    - any other exit 1: log a `blocked` row with the output, notify, stop the
      loop, and reply. Uncommitted files of unknown origin are never reverted
      or deleted.
@@ -119,7 +126,8 @@ dispatches nothing new.
    is not fixed, the unit is gated; anything outside scope goes to the
    closeout's follow-ups.
 7. Long waits (builds, benchmarks): background Bash or Monitor to wake you,
-   one waiter at a time, never sleep-polling.
+   one waiter at a time, never sleep-polling. Codex: run it in the foreground
+   with a long `timeout_ms`, or hand it to a worker and `wait_agent`.
 8. Dead end per unit: two independent approaches each with concrete failure
    evidence, and at least 30 minutes of work on it (the manifest may change
    the floor; waiting time does not count). Log `dead`, move to another unit.
@@ -148,7 +156,7 @@ on a default.
 default dead stage-done side blocked pause close correction`; at least one
 row per round.
 
-**Notify** with PushNotification only when a `gate` row is written ("需要你
+**Notify** with PushNotification (Codex: `$S/scripts/notify.sh`) only when a `gate` row is written ("需要你
 定：<问题>，已先做别的 / 已按默认 <值> 处理") and when the run stops
 ("<slug> 完成 / 部分完成 / 受阻"). A failed send is not retried; mention it
 in the closeout.
@@ -158,14 +166,14 @@ in the closeout.
 Finish the current step and commit it, or restore it. Only when it can neither
 finish nor be restored without losing useful work, commit your own edits as
 one `wip:` commit (the one exception to committing only checked units). Log
-`pause` with the current unit, the next step, and the traps. Stop the loop,
-`run-state.sh release <slug>`. Reply: where it stands, commits, whether the
+`pause` with the current unit, the next step, and the traps. Stop the loop
+(Codex: `update_goal` `paused`), `run-state.sh release <slug>`. Reply: where it stands, commits, whether the
 tree is clean, and the first step on resume.
 
 ## Pickup (a new session)
 
-1. `run-state.sh claim <slug>`. Refused because another claude process is
-   alive: tell the user to close that session first; stop.
+1. `run-state.sh claim <slug>`. Refused because another agent process
+   (claude or codex) is alive: tell the user to close that session first; stop.
 2. `run-state.sh check <slug>` and handle it as in **Round** step 1.
 3. Read the manifest; rerun every condition yourself, never trusting a logged
    pass.
@@ -225,8 +233,8 @@ tree is clean, and the first step on resume.
    Unavailable: the range `<review head>..HEAD` is 未审查.
 9. Log `close`; the decision column is exactly 完成, 部分完成, or 受阻,
    judged by the conditions, not by a clean review.
-10. Stop the loop, `run-state.sh release <slug>` (stops this run's
-   caffeinate only), notify.
+10. Stop the loop (Codex: `update_goal` `complete`, or `blocked` when 受阻),
+   `run-state.sh release <slug>` (stops this run's caffeinate only), notify.
 
 **Reply:**
 

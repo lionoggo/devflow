@@ -7,7 +7,8 @@ a paragraph that still names goal, scope, verify, and report. From pstack
 
 ```text
 目标     <一句话，不看对话也能执行>
-准备     先运行 git branch --show-current 得到分支名，再运行 git switch -C <这个分支名> <base>，
+准备     （Claude Code 的 worktree 子 agent；Codex 换成"工作目录 <path>：每条命令都在这里运行，只在这里提交"）
+         先运行 git branch --show-current 得到分支名，再运行 git switch -C <这个分支名> <base>，
          分支名照抄输出的字面值，不要用变量或 $(...)（收尾扫描只认字面分支名）
          （新 worktree 从仓库默认分支拉出，不一定是 base；这一步把它对齐到 base，分支名不变；只在还没有任何改动时做）
 范围     只能改：<globs>；不能改：<受保护路径和其他单元的路径>；当前目录就是你的 worktree，只在这里提交

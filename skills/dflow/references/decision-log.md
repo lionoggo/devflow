@@ -21,8 +21,8 @@ step 6); by 排查 once it passes an hour or a fix fails twice
   edited or deleted.
 - **Runs:** the first row a conversation writes into an existing log has phase
   `start`, names the ts range of earlier rows it did not write, and its
-  evidence holds the full `$CLAUDE_CODE_SESSION_ID`. Use `start` for nothing
-  else.
+  evidence holds the full session id (`$CLAUDE_CODE_SESSION_ID`, or
+  `$CODEX_THREAD_ID` in Codex). Use `start` for nothing else.
 - **Before the final reply:**
   1. Build the timeline: `python3 -I scripts/timeline.py --say <session ids
      from the start rows>` into a `scripts/scratch.sh` directory. `--say`

@@ -21,8 +21,8 @@ pstack `correct`, `reflect`, and `authoring-a-skill`. Principles: 结构化教�
    files by path instead of restating; check that the frontmatter has `name`
    and `description` and every referenced path exists. When the skill has a
    test script, run it.
-5. Global rule files (`~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`,
-   `~/.claude/settings.json`) and anything outside the goal are ask-first:
+5. Global rule files (`~/.codex/AGENTS.md`, `~/.codex/config.toml`,
+   `~/.claude/CLAUDE.md`, `~/.claude/settings.json`) and anything outside the goal are ask-first:
    show the exact change and wait. Repo files in scope: edit and commit
    locally.
 6. Reflect on a session (user says "总结教训", or 复盘 hands lessons over):

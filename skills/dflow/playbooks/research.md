@@ -19,17 +19,18 @@ pstack `how`, `why`. Principles: 以现状为准, 解释数字, 真实证据.
    - **Complex**: anything bigger, or the answer spans two or more languages,
      processes, or services, or it is a whole-project overview. Split the question into 2–4 angles
      that do not overlap (for example entry and flow, data and storage,
-     configuration and boundaries). In one message, start one read-only Claude
-     subagent per angle (the Explore agent type, model `sonnet`: they trace
-     and cite, and you verify) and give `codex exec -s read-only`, in the
-     background, the angle of failure paths, edge cases, and where the code
+     configuration and boundaries). In one message, start one read-only
+     subagent per angle (the Explore agent type, model `sonnet`; in Codex
+     the explorer row of `references/hosts.md`: they trace and cite, and you
+     verify) and give the other model (`codex exec -s read-only` in the
+     background; from Codex, `claude -p`) the angle of failure paths, edge cases, and where the code
      disagrees with its docs or plans (always this angle: a different model
      on the angle most likely to find defects). All use
      `references/research-explorer-prompt.md`. Then you synthesize:
      merge overlaps, settle every contradiction by reading the code yourself,
      and read the main path yourself before stating it. Explorer findings are
      leads, not evidence. Name which angle each explorer took, and write
-     "codex 未参与：<原因>" when it could not run.
+     "<模型> 未参与：<原因>" when the other model could not run.
    For either size: read the main path yourself, entry to effect. Tie each key claim
    to `path:line` taken from numbered output; otherwise cite file and symbol.
    Keep each claim's conditions (only when configured, fallback, default vs
