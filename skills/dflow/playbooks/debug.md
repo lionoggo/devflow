@@ -27,8 +27,9 @@ and devflow-debug. Principles: 找根因, 通用解, 真实证据, 测行为.
    fix, when there is a test).
 8. If this is the second failed fix for the same symptom, stop fixing: write
    down the shared premise, run the cross-model review, and change approach.
-9. An investigation past an hour, or one that reached step 8, keeps a decision
-   log from then on per `references/decision-log.md`: first one row each for
+9. An investigation the start trigger in `SKILL.md` covers keeps a decision
+   log from step 1. Otherwise one past an hour, or one that reached step 8,
+   starts it then per `references/decision-log.md`: first one row each for
    the hypotheses already ruled out and the fixes already tried, with their
    evidence; then a row per new hypothesis, fix, or pivot. It ends with the
    log's audit and review before the reply.

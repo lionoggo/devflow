@@ -1,12 +1,13 @@
 # 决策日志 (decision log)
 
 **A trail a person can review after the fact: one row per decision, with the
-evidence.** From pstack `show-me-your-work`. Kept by 无人值守 always; by 实施
-with two or more stages or expected to run over an hour (`playbooks/build.md`
-step 6); by 排查 once it passes an hour or a fix fails twice
-(`playbooks/debug.md` step 9); and by any playbook when the user asks for one
-("记决策日志"). Short tasks do not keep one. A person reviews it through 复盘
-(`playbooks/retro.md`); see **How a person reads it**.
+evidence.** From pstack `show-me-your-work`. Kept by 无人值守 always; from
+the first step by any playbook whose work, as it starts, has two or more stages, is
+expected to run over an hour, or arrives as a handed-over task for a long run
+(`SKILL.md`; pstack `poteto-mode`: long, multi-phase, or step-away work); by
+排查 also once it passes an hour or a fix fails twice (`playbooks/debug.md`
+step 9); and by any playbook when the user asks for one ("记决策日志"). Short tasks that meet none of these do not keep one. A
+person reviews it through 复盘 (`playbooks/retro.md`); see **How a person reads it**.
 
 - **File:** `.dflow/<slug>.tsv` (`scripts/log.sh` and `scripts/scratch.sh`
   both add `.dflow/` to the repo's local exclude). Never committed unless the

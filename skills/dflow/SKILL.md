@@ -66,7 +66,12 @@ is 方案; how a logged run's decisions hold up is 复盘, where things stand no
 is 进展. No match: treat it as 方案 and frame the goal and its done check
 first. "记决策日志" is not a playbook: it adds a decision log
 (`references/decision-log.md`) to whichever playbook the rest of the request
-matches, or to the current one. A playbook file that does not exist yet: say
+matches, or to the current one. Work that, as you start it, has two or more
+stages, is expected to run over an hour, or arrives as a handed-over task
+for a long run keeps one from its first step, in any playbook (from pstack
+`poteto-mode`: long, multi-phase, or step-away work). This does not start
+无人值守's log before the user says 开始, and 复盘 never writes rows into the
+log it reviews. A playbook file that does not exist yet: say
 so in one line, then work by the rules in this file.
 
 ## Never block on reversible work
@@ -139,7 +144,9 @@ path in the reply.
   (exception: after the user says "并行", the worktrees and branches
   `scripts/parallel.sh` and the worktree subagents create and remove);
 - discard or delete work you did not create in this task, including untracked
-  files: list exactly what would be lost;
+  files and existing files a command you run would overwrite (files this
+  task wrote excepted; earlier runs' outputs count): list exactly what would
+  be lost;
 - write to an external system (tickets, chat, releases, deploys);
 - edit files outside the task's goal, including global rule files.
 

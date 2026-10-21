@@ -32,8 +32,8 @@ result without stopping.** From devflow-impl and pstack `feature`. Principles:
    `principles/test-behavior.md`: it must fail if the feature is removed.
 6. Follow the plan's stages in order; each stage's check passes before
    dependent work starts. Work with two or more stages, or expected to run
-   over an hour, keeps a decision log per `references/decision-log.md` and
-   ends with its audit and review. When a stage remains and the user asked for the whole
+   over an hour, keeps a decision log from its first step per
+   `references/decision-log.md` and ends with its audit and review. When a stage remains and the user asked for the whole
    plan, continue into it.
 7. Finish with 验收 (`playbooks/verify.md`) for user-visible results; an
    end-to-end promise needs an end-to-end observation. Then `SKILL.md`
