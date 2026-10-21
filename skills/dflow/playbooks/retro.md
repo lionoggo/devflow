@@ -5,11 +5,24 @@ deserves a look first, then the rows it points at. Read-only.** From pstack
 `show-me-your-work` ("catch me up on what you did last night"). Principles:
 真实证据, 以现状为准.
 
-1. Find the log: the slug the user names, else `.dflow/*.tsv` in this repo
-   (not `*.units.tsv`), newest first. Several written in the last day: take
-   the newest and name the others in one line. None: there is no trail; say
-   so, and go to 进展 for where things stand, or 调优 step 6 for lessons from
-   this conversation.
+1. Find the log in `.dflow/*.tsv` of this repo (not `*.units.tsv`). Only
+   this repo: never scan other repos or other projects' transcripts; a run
+   in another repo is reviewed from that repo.
+   - A slug named: review only that one.
+   - 全部 or all: every log written in the last day (file mtime), each
+     through steps 2–7 on its own, with its own retro directory, `retro.md`
+     and cross-model review.
+   - Neither: review the newest. When several were written in the last
+     day, first give a table, slug | 状态 | the last row's decision | log
+     path, and say in one line that `/dflow retro <slug>` or `全部` reviews the
+     others. 状态 comes only from these files: 运行中 when the lease
+     `.dflow/<slug>.lock/lease` names a `pid` that is a live claude or codex
+     process; else the last `close` row's decision (完成, 部分完成, 受阻);
+     else 受阻 when the last row is `blocked`, 已暂停 when it is `pause`;
+     else 未收尾 (a stale lease, or a log that never closes, as playbooks
+     other than 无人值守 write).
+   - None: there is no trail; say so, and go to 进展 for where things
+     stand, or 调优 step 6 for lessons from this conversation.
 2. A lease (`.dflow/<slug>.lock/`) whose session is still alive means the
    run is still going: say so and review up to now. Never claim, check, or
    write that run's files.
@@ -46,7 +59,12 @@ deserves a look first, then the rows it points at. Read-only.** From pstack
    the danger scan, P2 findings, lessons, and the full review's path. This
    file is where the detail lives; the reply only points at it.
 
-**Reply:** as pstack does. A short summary in your own words (how the run
+**Reply:** one log as below. Several (全部): first the table from step 1,
+then one summary per log, then a single `**需要你注意**` merging every log's
+items, each item starting with `<slug>：`, one `审查：` line per slug, and one
+`详情：` line per slug.
+
+One log, as pstack does: a short summary in your own words (how the run
 went, what is still open, what the user needs to decide), written per
 **Reply** in `SKILL.md`; no fixed lines or headings. It never says nothing
 needs the user while the section below has a P1. How you checked (review

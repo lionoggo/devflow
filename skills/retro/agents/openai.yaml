@@ -1,0 +1,6 @@
+interface:
+  display_name: "dflow 复盘"
+  short_description: "Review a dflow run's decision log"
+
+policy:
+  allow_implicit_invocation: false

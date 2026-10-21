@@ -1,0 +1,6 @@
+interface:
+  display_name: "dflow"
+  short_description: "Route a dev goal to a playbook, close with evidence"
+
+policy:
+  allow_implicit_invocation: false

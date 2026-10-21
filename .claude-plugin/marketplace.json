@@ -1,0 +1,14 @@
+{
+  "name": "devflow",
+  "description": "Local marketplace for the dflow plugin in this repository.",
+  "owner": {
+    "name": "lionoggo"
+  },
+  "plugins": [
+    {
+      "name": "dflow",
+      "source": "./",
+      "description": "Personal development workflow: one entry routes a goal to a playbook and closes with evidence."
+    }
+  ]
+}

@@ -7,12 +7,12 @@ repo=$(cd "$(dirname "$0")" && pwd)
 check=${1:-}
 problems=0
 
-# devflow-* is retired (sources kept for reference) and is not linked.
 # dflow-report goes to Codex and Claude Code; everything else goes to the
-# shared dir (read by Codex) and Claude Code.
+# shared dir (read by Codex) and Claude Code. The retired devflow-* skills
+# live in archive/ and are not linked.
 targets_for() {
     case "$1" in
-        devflow-*) ;;
+        retro) ;; # plugin-only entry (/dflow:retro); a global "retro" skill would clash
         dflow-report) echo "$HOME/.codex/skills $HOME/.claude/skills" ;;
         *) echo "$HOME/.agents/skills $HOME/.claude/skills" ;;
     esac

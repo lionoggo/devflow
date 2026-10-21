@@ -1,0 +1,14 @@
+{
+  "name": "dflow",
+  "description": "Personal development workflow: one entry routes a goal to a playbook (research, debug, plan, review, build, verify, unattended, retro, ship and more) and closes with evidence.",
+  "author": {
+    "name": "lionoggo"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "dflow",
+    "shortDescription": "Route a dev goal to a playbook, close with evidence",
+    "developerName": "lionoggo",
+    "category": "Productivity"
+  }
+}

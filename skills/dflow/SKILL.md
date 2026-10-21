@@ -1,6 +1,6 @@
 ---
 name: dflow
-description: "The single entry for development work: routes a goal to a playbook (teach, research, debug, plan, review, build, verify, impact, prototype, polish, unattended, handoff, status, retro, report, ship, tune), works without blocking on reversible steps, and closes with evidence. Only when the user names dflow (/dflow or $dflow)."
+description: "The single entry for development work: routes a goal to a playbook (teach, research, debug, plan, review, build, verify, unattended, handoff, status, retro, report, ship, tune, impact, prototype, polish), works without blocking on reversible steps, and closes with evidence. Only when the user names dflow (/dflow or $dflow; as a plugin, dflow:dflow)."
 disable-model-invocation: true
 ---
 
@@ -14,9 +14,13 @@ to this file's directory.
 
 1. If the goal is unclear after a long discussion, restate it in one sentence
    first ("我理解的目标是…").
-2. Match the request to one playbook in the table below. "新任务" or "new
-   task" means re-match; short follow-ups ("继续", "你来改", "好的") stay in
-   the current playbook.
+2. If the request's first word (after `/dflow`, `$dflow`, or the plugin's
+   `/dflow:dflow` / `$dflow:dflow`) is exactly a playbook's name or id from
+   the table below (`复盘`, `retro`), use that playbook without matching;
+   this beats the follow-up rule. Only the first word counts, not a name
+   later in the text. Otherwise match the request to one playbook in the
+   table below. "新任务" or "new task" means re-match; short follow-ups
+   ("继续", "你来改", "好的") stay in the current playbook.
 3. Make the route visible before any other work, the way pstack does: put
    the playbook's steps in the todo tool verbatim (TodoWrite, TaskCreate
    found via ToolSearch, or Codex update_plan); the reply does not repeat
@@ -40,25 +44,25 @@ Codex session that needs any of them.
 
 ## Playbooks
 
-| Playbook | When | File |
-|---|---|---|
-| 讲解 | The user wants to understand a concept, a plan, or code: why, what, how to think about it (learning) | `playbooks/teach.md` |
-| 调研 | How existing code or a project works, why it is built that way, how others do it; no failure involved | `playbooks/research.md` |
-| 排查 | An error, a failure, "仍然…", or a URL or screenshot plus a symptom | `playbooks/debug.md` |
-| 方案 | An idea, a design, a technology choice, "业内怎么做" | `playbooks/plan.md` |
-| 评审 | Review a plan or code, compare two approaches | `playbooks/review.md` |
-| 实施 | Build from an approved plan, or "你来改"; "并行" runs its independent units in parallel | `playbooks/build.md` |
-| 验收 | Verify, 验收, real end-to-end checks | `playbooks/verify.md` |
-| 无人值守 | "我要离开", "去睡了", "跑到…为止", "别停", "无人值守"; "继续无人值守 <slug>"; "暂停" during a run | `playbooks/unattended.md` |
-| 交接 | A prompt for a new session or another agent | `playbooks/handoff.md` |
-| 进展 | Where things are, what is next, why it stopped | `playbooks/status.md` |
-| 复盘 | "复盘", "昨晚做了什么", "审一下这次运行": review a run that kept a decision log | `playbooks/retro.md` |
-| 周报 | Summarize work over a period from Git | `playbooks/report.md` |
-| 提交与发布 | Commit, split commits, open or follow a PR | `playbooks/ship.md` |
-| 调优 | Change a skill, AGENTS.md or CLAUDE.md, or "make this mistake impossible" | `playbooks/tune.md` |
-| 影响面 | "影响面", "会影响什么", "这个改动安全吗" | `references/impact.md` |
-| 原型 | "做个原型", "哪种效果好", "先做出来看看", or a fork about how a screen looks | `playbooks/prototype.md` |
-| 润色 | "润色", "去 AI 腔", "精简这段文字" | `references/unslop.md` |
+| Playbook | id | When | File |
+|---|---|---|---|
+| 讲解 | teach | The user wants to understand a concept, a plan, or code: why, what, how to think about it (learning) | `playbooks/teach.md` |
+| 调研 | research | How existing code or a project works, why it is built that way, how others do it; no failure involved | `playbooks/research.md` |
+| 排查 | debug | An error, a failure, "仍然…", or a URL or screenshot plus a symptom | `playbooks/debug.md` |
+| 方案 | plan | An idea, a design, a technology choice, "业内怎么做" | `playbooks/plan.md` |
+| 评审 | review | Review a plan or code, compare two approaches | `playbooks/review.md` |
+| 实施 | build | Build from an approved plan, or "你来改"; "并行" runs its independent units in parallel | `playbooks/build.md` |
+| 验收 | verify | Verify, 验收, real end-to-end checks | `playbooks/verify.md` |
+| 无人值守 | unattended | "我要离开", "去睡了", "跑到…为止", "别停", "无人值守"; "继续无人值守 <slug>"; "暂停" during a run | `playbooks/unattended.md` |
+| 交接 | handoff | A prompt for a new session or another agent | `playbooks/handoff.md` |
+| 进展 | status | Where things are, what is next, why it stopped | `playbooks/status.md` |
+| 复盘 | retro | "复盘", "昨晚做了什么", "审一下这次运行": review a run that kept a decision log | `playbooks/retro.md` |
+| 周报 | report | Summarize work over a period from Git | `playbooks/report.md` |
+| 提交与发布 | ship | Commit, split commits, open or follow a PR | `playbooks/ship.md` |
+| 调优 | tune | Change a skill, AGENTS.md or CLAUDE.md, or "make this mistake impossible" | `playbooks/tune.md` |
+| 影响面 | impact | "影响面", "会影响什么", "这个改动安全吗" | `references/impact.md` |
+| 原型 | prototype | "做个原型", "哪种效果好", "先做出来看看", or a fork about how a screen looks | `playbooks/prototype.md` |
+| 润色 | polish | "润色", "去 AI 腔", "精简这段文字" | `references/unslop.md` |
 
 Pick by the output the user wants: a list of findings is 评审; an
 explanation is 讲解 or 调研; variants to look at is 原型; an executable plan
