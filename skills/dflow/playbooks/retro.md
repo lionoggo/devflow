@@ -12,20 +12,22 @@ deserves a look first, then the rows it points at. Read-only.** From pstack
    - 全部 or all: every log written in the last day (file mtime), each
      through steps 2–7 on its own, with its own retro directory, `retro.md`
      and cross-model review.
-   - Neither: review the newest. When several were written in the last
-     day, first give a table, slug | 状态 | the last row's decision | log
-     path, and say in one line that `/dflow retro <slug>` or `全部` reviews the
-     others. 状态 comes only from these files: 运行中 when the lease
-     `.dflow/<slug>.lock/lease` names a `pid` that is a live claude or codex
-     process; else the last `close` row's decision (完成, 部分完成, 受阻);
-     else 受阻 when the last row is `blocked`, 已暂停 when it is `pause`;
-     else 未收尾 (a stale lease, or a log that never closes, as playbooks
-     other than 无人值守 write).
+   - Neither: review the newest by mtime (`ls -t`; on a tie, the later
+     last-row ts). When several were written in the last day, first give a
+     table, slug | 状态 | the last row's decision | log path, and say in one
+     line that `/dflow retro <slug>` or `全部` reviews the others. 状态 comes
+     only from these files, by the last row: `close` gives its decision
+     (完成, 部分完成, 受阻), `blocked` gives 受阻, `pause` gives 已暂停. Any
+     other last row: 运行中 when the lease `.dflow/<slug>.lock/lease` names
+     a `pid` that is a live claude or codex process, else 未收尾 (a stale
+     lease, or a log that never closes, as playbooks other than 无人值守
+     write). A `blocked` run keeps its lease, so a live pid alone never
+     means 运行中.
    - None: there is no trail; say so, and go to 进展 for where things
      stand, or 调优 step 6 for lessons from this conversation.
-2. A lease (`.dflow/<slug>.lock/`) whose session is still alive means the
-   run is still going: say so and review up to now. Never claim, check, or
-   write that run's files.
+2. A run whose 状态 (step 1) is 运行中 is still going: say so and review up
+   to now. While its lease's session is alive, whatever the 状态, never
+   claim, check, or write that run's files.
 3. Collect: the whole log, the manifest `.dflow/<slug>.md` when there is one,
    `git log --stat <base>..<branch>` (base from the manifest or the first
    `start` row), and `python3 -I scripts/timeline.py --say <session ids from

@@ -126,7 +126,7 @@ grep -q '^session: th-1$' .dflow/demo.lock/lease && ok || bad "codex host: lease
 [ "pid=$lp" = "$(printf '%s\n' "$out" | grep '^pid=')" ] && ok || bad "codex host: lease pid $lp is not the codex process ($out)"
 rm -rf .dflow/demo.lock
 out=$(env -u DFLOW_SESSION_ID -u DFLOW_AGENT_PID -u CLAUDE_PID CODEX_THREAD_ID=inherited CLAUDE_CODE_SESSION_ID=cs-1 \
-    "$t/bin/claude" -c "\"$rs\" claim demo" 2>&1)
+    "$t/bin/claude" -c "\"$rs\" claim demo; true" 2>&1)
 grep -q '^session: cs-1$' .dflow/demo.lock/lease && ok || bad "claude host: lease session not CLAUDE_CODE_SESSION_ID: $out"
 # a live codex owner blocks a takeover like a live claude one
 "$t/bin/codex" -c 'sleep 30; true' & pids+=($!); xp=$!

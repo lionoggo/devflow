@@ -17,8 +17,8 @@ to this file's directory.
 2. If the request's first word (after `/dflow`, `$dflow`, or the plugin's
    `/dflow:dflow` / `$dflow:dflow`) is exactly a playbook's name or id from
    the table below (`复盘`, `retro`), use that playbook without matching;
-   this beats the follow-up rule. Only the first word counts, not a name
-   later in the text. Otherwise match the request to one playbook in the
+   this beats the follow-up rule, and step 3 still comes first. Only the
+   first word counts, not a name later in the text. Otherwise match the request to one playbook in the
    table below. "新任务" or "new task" means re-match; short follow-ups
    ("继续", "你来改", "好的") stay in the current playbook.
 3. Make the route visible before any other work, the way pstack does: put
