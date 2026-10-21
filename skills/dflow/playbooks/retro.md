@@ -16,8 +16,9 @@ deserves a look first, then the rows it points at. Read-only.** From pstack
      last-row ts). When several were written in the last day, first give a
      table, slug | 状态 | the last row's decision | log path, and say in one
      line that `/dflow retro <slug>` or `全部` reviews the others. 状态 comes
-     only from these files, by the last row: `close` gives its decision
-     (完成, 部分完成, 受阻), `blocked` gives 受阻, `pause` gives 已暂停. Any
+     only from these files, by the last row that is not a `correction`:
+     `close` gives its decision (完成, 部分完成, 受阻), `blocked` gives 受阻,
+     `pause` gives 已暂停. Any
      other last row: 运行中 when the lease `.dflow/<slug>.lock/lease` names
      a `pid` that is a live claude or codex process, else 未收尾 (a stale
      lease, or a log that never closes, as playbooks other than 无人值守
