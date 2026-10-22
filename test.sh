@@ -3,7 +3,7 @@
 set -u
 repo=$(cd "$(dirname "$0")" && pwd)
 status=0
-for t in "$repo"/skills/*/scripts/*-test.sh; do
+for t in "$repo"/plugins/dflow/skills/*/scripts/*-test.sh; do
     "$t" || status=1
 done
 exit $status

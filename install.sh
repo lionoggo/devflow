@@ -32,7 +32,7 @@ link() { # src dest
     mkdir -p "$(dirname "$dest")" && ln -s "$src" "$dest" && echo "linked   $dest -> $src"
 }
 
-for src in "$repo"/skills/*/; do
+for src in "$repo"/plugins/dflow/skills/*/; do
     src=${src%/}; name=$(basename "$src")
     for dir in $(targets_for "$name"); do link "$src" "$dir/$name"; done
 done

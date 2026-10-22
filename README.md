@@ -1,6 +1,6 @@
 # devflow
 
-个人开发流程 Skill。主入口是 `dflow`，在 Claude Code 和 Codex 里都能用（Codex 侧的对应做法见 `skills/dflow/references/hosts.md`）。
+个人开发流程 Skill。主入口是 `dflow`，在 Claude Code 和 Codex 里都能用（Codex 侧的对应做法见 `plugins/dflow/skills/dflow/references/hosts.md`）。
 
 | Skill | 用途 | 软链接位置 |
 |---|---|---|
@@ -19,7 +19,7 @@
 | Codex，软链接 | `$dflow` | `$dflow retro` |
 | Codex，插件 | `$dflow:dflow` | `$dflow:retro` |
 
-点名直达：入口后的第一个词恰好是流程的中文名或 id（见 `skills/dflow/SKILL.md` 流程表），就直接用那个流程，例如 `/dflow retro alpha`、`/dflow 复盘 全部`、`/dflow debug 登录页白屏`。只看第一个词；不是流程名时照常匹配。
+点名直达：入口后的第一个词恰好是流程的中文名或 id（见 `plugins/dflow/skills/dflow/SKILL.md` 流程表），就直接用那个流程，例如 `/dflow retro alpha`、`/dflow 复盘 全部`、`/dflow debug 登录页白屏`。只看第一个词；不是流程名时照常匹配。
 
 复盘的参数：slug 只审那一份；`全部` 审过去一天写过的每份日志；不给参数审最新一份，过去一天有多份时先列汇总表。
 
@@ -38,7 +38,7 @@
 
 ### 插件
 
-仓库根目录就是插件根目录，同时带有两边的本地 marketplace（名字都是 `devflow`）。
+插件在 `plugins/dflow/`，仓库根目录带有两边的本地 marketplace（名字都是 `devflow`）。根目录的 `skills` 是指向 `plugins/dflow/skills` 的兼容链接，供仍在用旧路径的会话使用。
 
 ```sh
 # Claude Code
@@ -53,14 +53,14 @@ codex plugin add dflow@devflow
 改动如何生效：
 
 - Claude Code：从本地路径加的 marketplace 直接读源目录，不复制；`claude --plugin-dir /path/to/devflow` 也是。改完在会话里 `/reload-plugins` 或开新会话。
-- Codex：安装时把整个仓库复制到 `~/.codex/plugins/cache/devflow/dflow/local/`，之后的改动要重新安装才生效。开发期继续用 `install.sh` 软链接。
+- Codex：安装时把 `plugins/dflow/` 复制到 `~/.codex/plugins/cache/devflow/dflow/local/`，之后的改动要重新安装才生效。开发期继续用 `install.sh` 软链接。
 
 撤销：`claude plugin uninstall dflow@devflow` 和 `claude plugin marketplace remove devflow`；`codex plugin remove dflow@devflow` 和 `codex plugin marketplace remove devflow`。
 
 ## 测试
 
 ```sh
-./test.sh   # 运行 skills/*/scripts/*-test.sh
+./test.sh   # 运行 plugins/dflow/skills/*/scripts/*-test.sh
 ```
 
 修改 `scripts/` 下任何脚本后必须运行。
