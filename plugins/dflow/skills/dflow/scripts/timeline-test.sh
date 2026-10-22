@@ -39,7 +39,7 @@ echo "$s" | grep -q $'agent-w1\tprompt\t实施单元 u1\t-' && ok || bad "--say 
 echo "$s" | grep -q $'\tnotice\t<task-notification>' && ok || bad "--say task notice"
 [ "$(echo "$s" | grep -c $'\t\(Bash\|Edit\)\t')" = 3 ] && ok || bad "--say lost tool rows: $s"
 for c in 'git switch -C "$(git branch --show-current)" abc123:False' "git switch -C unit-u1 abc:True" "git switch -C worktree-agent-abc 1234:False" "git switch main:True" "git switch -C other HEAD:True" "git merge-base HEAD main:False" "git merge dflow/x:True"; do
-    r=$(python3 -I -c "import sys,re;sys.path.insert(0,'$here');import timeline;print(bool(timeline.DANGER.search(sys.argv[1])))" "${c%:*}")
+    r=$(python3 -I -B -c "import sys,re;sys.path.insert(0,'$here');import timeline;print(bool(timeline.DANGER.search(sys.argv[1])))" "${c%:*}")
     [ "$r" = "${c##*:}" ] && ok || bad "danger($c) = $r"
 done
 # Codex rollouts: thread id lookup, subagents by parent_thread_id, copied history skipped
@@ -66,6 +66,5 @@ echo "$cs" | grep -q $'\tnotice\t<codex_internal_context source="goal">' && ok |
 python3 -I "$here/timeline.py" --danger "$P" >/dev/null; [ $? = 1 ] && ok || bad "codex --danger exit"
 f=$(ls "$here"/timeline-cases/codex/2026/10/16/rollout-*-"$P".jsonl)
 [ "$(python3 -I "$here/timeline.py" "$f" | wc -l | tr -d ' ')" = 5 ] && ok || bad "codex path argument (parent only)"
-rm -rf "$here/__pycache__"
 echo "timeline-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]

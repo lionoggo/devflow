@@ -52,7 +52,7 @@ codex plugin add dflow@devflow
 
 改动如何生效：
 
-- Claude Code：从本地路径加的 marketplace 直接读源目录，不复制；`claude --plugin-dir /path/to/devflow` 也是。改完在会话里 `/reload-plugins` 或开新会话。
+- Claude Code：从本地路径加的 marketplace 直接读源目录，不复制；`claude --plugin-dir /path/to/devflow/plugins/dflow` 也是。改完在会话里 `/reload-plugins` 或开新会话。
 - Codex：安装时把 `plugins/dflow/` 复制到 `~/.codex/plugins/cache/devflow/dflow/local/`，之后的改动要重新安装才生效。开发期继续用 `install.sh` 软链接。
 
 撤销：`claude plugin uninstall dflow@devflow` 和 `claude plugin marketplace remove devflow`；`codex plugin remove dflow@devflow` 和 `codex plugin marketplace remove devflow`。
