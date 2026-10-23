@@ -37,12 +37,14 @@ Principles: 真实证据, 对齐目标, 不停下等人.
    external account) becomes a short checklist for the user, not a claim.
 6. Classify each failure: product defect, harness, environment, or baseline
    (failing before the change).
-7. Repair confirmed in-scope product defects without asking, unless the user
-   said "只验收" or the candidate is someone else's unmerged work: smallest fix,
-   rerun the affected evidence and nearby regressions, commit locally. Fix
-   harness problems only in maintained test code. Stop after three rounds on
-   the same defect, or when a repair needs an architecture or public-contract
-   change, and report.
+7. A standalone 验收 reports and changes nothing: each confirmed defect with
+   its evidence goes back to whoever writes the code (from pstack: the
+   verifier is never a second writer). Repair only when this session built
+   the candidate and reached here from 实施, or the user said "验收并修":
+   smallest fix, rerun the affected evidence and nearby regressions, commit
+   locally; harness problems only in maintained test code. Stop after three
+   rounds on the same defect, or when a repair needs an architecture or
+   public-contract change, and report.
 8. For several criteria or an inherited plan, keep the matrix in
    `references/acceptance.md`.
 
@@ -55,7 +57,7 @@ or clean to get a baseline.
 **验收结论**：<通过 / 未通过 / 部分通过 / 无法完成验收>。<一句话>
 - 候选：<HEAD 提交号或 diff 范围>
 - 标准与证据：<每条：标准 → 怎么查的（层级）→ 结果；推导出的标准注明>
-- 问题与修复：<确认的缺陷，修复提交>
+- 问题与修复：<确认的缺陷及证据；修了才写修复提交>
 - 未覆盖：<没观察到的项、给你的人工检查清单、环境或基线问题>
 ```
 

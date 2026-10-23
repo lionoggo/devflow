@@ -9,7 +9,8 @@ about behavior or timing is a minimal experiment under 不停下等人, not this
 playbook.
 
 1. Write down the one question the prototype answers ("报表用表格还是卡片").
-   No question, no prototype: route to 实施.
+   No question in the request: pick the one it most needs shown, say so, and
+   go on with the throwaway prototype; never switch to 实施 on your own.
 2. In the scratch directory (`SKILL.md` **Scratch directory**), write one
    HTML file with two or three labeled variants behind switch buttons. Plain
    HTML/CSS/JS, CDN libraries at most; no framework, build tool, tests, or

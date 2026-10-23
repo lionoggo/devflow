@@ -45,7 +45,7 @@ or the code index rather than interrupting every sentence.
 <类比元素 → 实际代码的对照表。>
 
 ## 业内对照
-<见 industry-comparison.md，只做定位，不做选型建议。>
+<见 references/research-industry-comparison.md，只做定位，不做选型建议。>
 
 ## 可借鉴的思路
 <仅当用户说明文档要给别人借鉴时。不重复关键设计。>

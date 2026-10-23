@@ -37,7 +37,7 @@ Leave out transcripts, raw logs, credentials, and unrelated file contents.
 
 开始前先核对分支、HEAD 和未提交文件是否与"现状"一致；不一致就停下报告差异。
 已完成的不要重做，从"剩余"的第一项开始。这里说已通过的检查，宣布完成前在真实产物上重跑一次。
-用 /dflow 开始，按对应流程做；不要再转交，不要换工作区。
+用 <入口：Claude 用 /dflow，Codex 用 $dflow:dflow> 开始，按对应流程做；不要再转交，不要换工作区。
 ```
 
 **Reply:** the prompt (or its file path), the target state you checked, and

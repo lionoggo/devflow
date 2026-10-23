@@ -4,9 +4,12 @@
 pstack `correct`, `reflect`, and `authoring-a-skill`. Principles: 结构化教训,
 先减后加, 真实证据.
 
-1. Name the mistake class with evidence: the user's corrections in this
-   conversation, recent commits and reverts, review comments, run logs. It
-   counts as a class once it happened twice; a one-off is not a lesson.
+1. Pick the branch. **Add or change a rule or skill** the user asked for:
+   no repeated-mistake evidence needed; skip to step 4. **Make a repeated
+   mistake impossible**: name the mistake class with evidence: the user's
+   corrections in this conversation, recent commits and reverts, review
+   comments, run logs. It counts as a class once it happened twice; a
+   one-off is not a lesson.
 2. Pick the highest level that works, in this order, and say why each higher
    one does not:
    1. Structure: remove the wrong way (one owner per state, one supported
@@ -34,7 +37,7 @@ pstack `correct`, `reflect`, and `authoring-a-skill`. Principles: 结构化教�
 
 ```text
 **调优**：<一句话>
-- 错误类型：<描述 → 出现过的证据（至少两次）>
+- 错误类型：<描述 → 出现过的证据（至少两次）；新增或修改规则时写“用户要求”>
 - 选的层级：<结构 / 检查 / 测试 / 文字>。更高层级为什么不行：<…>
 - 证明：<在过去那次错误上失败的输出 → 修正后通过的输出>
 - 改动：<文件和提交；全局文件写"待你确认"和具体改动>

@@ -19,8 +19,10 @@ to this file's directory.
    the table below (`复盘`, `retro`), use that playbook without matching;
    this beats the follow-up rule, and step 3 still comes first. Only the
    first word counts, not a name later in the text. Otherwise match the request to one playbook in the
-   table below. "新任务" or "new task" means re-match; short follow-ups
-   ("继续", "你来改", "好的") stay in the current playbook.
+   table below. "新任务" or "new task" means re-match. Short follow-ups
+   ("继续", "好的") stay in the current playbook. A reply that changes the
+   action or grants new authority ("你来改", "开始做", "按这个实施")
+   re-matches; it keeps the context, not the playbook.
 3. Make the route visible before any other work, the way pstack does: put
    the playbook's steps in the todo tool verbatim (TodoWrite, TaskCreate
    found via ToolSearch, or Codex update_plan); the reply does not repeat
@@ -46,8 +48,8 @@ Codex session that needs any of them.
 
 | Playbook | id | When | File |
 |---|---|---|---|
-| 讲解 | teach | The user wants to understand a concept, a plan, or code: why, what, how to think about it (learning) | `playbooks/teach.md` |
-| 调研 | research | How existing code or a project works, why it is built that way, how others do it; no failure involved | `playbooks/research.md` |
+| 讲解 | teach | The user wants to understand a concept, a plan, or known code: why, what, how to think about it (learning) | `playbooks/teach.md` |
+| 调研 | research | Facts not yet known that need evidence: how existing code or a project works, why it is built that way, how others do it; no failure involved | `playbooks/research.md` |
 | 排查 | debug | An error, a failure, "仍然…", or a URL or screenshot plus a symptom | `playbooks/debug.md` |
 | 方案 | plan | An idea, a design, a technology choice, "业内怎么做" | `playbooks/plan.md` |
 | 评审 | review | Review a plan or code, compare two approaches | `playbooks/review.md` |
@@ -59,13 +61,16 @@ Codex session that needs any of them.
 | 复盘 | retro | "复盘", "昨晚做了什么", "审一下这次运行": review a run that kept a decision log | `playbooks/retro.md` |
 | 周报 | report | Summarize work over a period from Git | `playbooks/report.md` |
 | 提交与发布 | ship | Commit, split commits, open or follow a PR | `playbooks/ship.md` |
-| 调优 | tune | Change a skill, AGENTS.md or CLAUDE.md, or "make this mistake impossible" | `playbooks/tune.md` |
+| 调优 | tune | Add or change a skill, AGENTS.md or CLAUDE.md; or "make this mistake impossible" | `playbooks/tune.md` |
 | 影响面 | impact | "影响面", "会影响什么", "这个改动安全吗" | `references/impact.md` |
 | 原型 | prototype | "做个原型", "哪种效果好", "先做出来看看", or a fork about how a screen looks | `playbooks/prototype.md` |
 | 润色 | polish | "润色", "去 AI 腔", "精简这段文字" | `references/unslop.md` |
 
 Pick by the output the user wants: a list of findings is 评审; an
-explanation is 讲解 or 调研; variants to look at is 原型; an executable plan
+explanation is 讲解 when the user wants to understand an idea or code they
+point at, 调研 when facts must be found and located with evidence; unsure
+means 讲解 (lighter), and 讲解 hands over to 调研 once something needs
+checking; variants to look at is 原型; an executable plan
 is 方案; how a logged run's decisions hold up is 复盘, where things stand now
 is 进展. No match: treat it as 方案 and frame the goal and its done check
 first. "记决策日志" is not a playbook: it adds a decision log
@@ -73,10 +78,16 @@ first. "记决策日志" is not a playbook: it adds a decision log
 matches, or to the current one. Work that, as you start it, has two or more
 stages, is expected to run over an hour, or arrives as a handed-over task
 for a long run keeps one from its first step, in any playbook (from pstack
-`poteto-mode`: long, multi-phase, or step-away work). This does not start
-无人值守's log before the user says 开始, and 复盘 never writes rows into the
-log it reviews. A playbook file that does not exist yet: say
+`poteto-mode`: long, multi-phase, or step-away work). This is the one
+definition of when a log starts; other files cite it and add only their own
+exceptions. This does not start 无人值守's log before the user says 开始,
+and read-only playbooks keep none unless the user asks (复盘 never writes
+rows into the log it reviews). A playbook file that does not exist yet: say
 so in one line, then work by the rules in this file.
+
+**Read-only playbooks** (讲解, 调研, 评审, 进展, 复盘, 周报) change no product
+file and commit nothing. Temporary evidence in the scratch directory is
+always allowed; a lasting document only when the user asks for one.
 
 ## Never block on reversible work
 
@@ -108,7 +119,9 @@ other) ends the same way, before its own reply:
 2. Write one line in the reply: `影响面：<影响到什么>；<为什么安全，或风险在哪>（<证据等级>）`.
    Evidence levels: 说了 · 指到代码行 · 推演排除 · 跑过 · 真实应用复现. A
    text-only change writes `影响面：无需行为冒烟，仅改文字`; never drop the
-   line.
+   line. A skill, rule file, or prompt is not text-only: it steers what a
+   model does. Check one typical request and one edge request against it (run
+   them or walk the routing), and name both in the 影响面 line.
 3. Run the full analysis in `references/impact.md` when the change touches a
    contract others can observe: an interface or return shape used elsewhere, a
    data or save format, a config key, or deleting code that runtime, config,
@@ -142,7 +155,9 @@ the `type(scope):` prefix. A tie or no history means English.
 (it creates `<repo>/.dflow/tmp/<time>[-name]/` and keeps it out of Git). Every
 temporary file goes there, including one-line test inputs, prototypes,
 evidence, and paths you suggest to the user; use `mktemp -p "$d"`, never bare
-`mktemp`. Never write to `/tmp` or `$TMPDIR`. At the end, stop processes you
+`mktemp`. Never write to `/tmp` or `$TMPDIR` (exception: dflow's own
+regression scripts, `scripts/*-test.sh`, create and clean their own system
+temp directories). At the end, stop processes you
 started, delete scratch files that are not evidence, and name the evidence
 path in the reply.
 
@@ -191,7 +206,7 @@ missing.
 | 先减后加 | Plans, reviews, skill design | Delete and reuse first; justify every new mechanism | `principles/subtract-first.md` |
 | 测行为 | Writing or keeping a test | Assert what users observe; a test that passes with the behavior broken, or fails when only internals change, goes | `principles/test-behavior.md` |
 | 小步可验证 | Multi-step work | Each unit ends in a check; go on only when it passes | `principles/verifiable-units.md` |
-| 解释数字 | Reporting a measured number | Name what limits it and rule out what else it could measure | `principles/explain-number.md` |
+| 解释数字 | Reporting a measured or performance number (a plain count only needs its source and scope checked) | Name what limits it and rule out what else it could measure | `principles/explain-number.md` |
 | 以现状为准 | Citing docs or old plans | Check against current code; ask for missing evidence, never invent it | `principles/current-state.md` |
 | 结构化教训 | The same correction a second time | Prefer a check, script, or structure over more text | `principles/encode-lessons.md` |
 
@@ -203,7 +218,9 @@ missing.
   20–25 and 37).
 - Every claim carries its evidence in the same sentence, or is labeled 推测
   with how to check it. Never hand the user a check you could run
-  (复盘 excepted: it reads the transcript instead of rerunning).
+  (复盘 excepted: it reads the transcript instead of rerunning). 周报's
+  body is the exception to inline evidence: it follows `../report/SKILL.md`
+  (evidence goes in an appendix, only on request).
 - Itemized revisions use P0/P1/P2 with the location and the smallest change.
 - After a change: what changed, the evidence, choices you made and how to
   undo them, and what is still unverified.

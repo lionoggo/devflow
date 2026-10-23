@@ -105,9 +105,12 @@ Round with workers running ends in `wait_agent` on them.
 
 1. `$S/scripts/run-state.sh check <slug>`:
    - exit 0: go on;
-   - exit 3 (`UNLOGGED <sha>` lines): commits no row names. Rerun the
-     checks; pass, log one row naming each as `commit <sha>`; fail,
-     `git revert --no-edit` them newest first and log a no-progress round;
+   - exit 3 (`UNLOGGED <sha>` lines): commits no row names. First check who
+     made each (author, time, whether this run's session did). Only for ones
+     confirmed as this run's: rerun the checks; pass, log one row naming
+     each as `commit <sha>`; fail, `git revert --no-edit` them newest first
+     and log a no-progress round. Unconfirmed: log one `blocked` row and
+     report; never revert them;
    - exit 4: deadline passed, go to **Close**;
    - exit 1 with "lease held by" another session: stop your loop (Codex:
      `update_goal` `blocked`), write nothing;
@@ -228,8 +231,8 @@ tree is clean, and the first step on resume.
    constraints on verbatim. From Codex: write the prompt to a file, then
    `$S/scripts/review.sh start <prompt> <out>` and `review.sh wait <out>`
    until `ended` (a review takes minutes; a 60-second foreground call only
-   yields 未审查). Unavailable: "未审查：<原因>"; go to
-   step 9.
+   yields 未审查). Unavailable, `ended lost`, or `ended timeout`:
+   "未审查：<原因>"; go to step 9.
 7. Fix once: check each finding against the code; fix the ones that hold and
    need no new authority in one batch, with the failure path the finding
    names checked, not only the old tests. Skip the batch when the deadline
@@ -260,6 +263,6 @@ tree is clean, and the first step on resume.
 - 影响面：<见 SKILL.md>
 - 日志：.dflow/<slug>.tsv（清单 .dflow/<slug>.md）
 **需要你注意**
-审查：codex（没审就写"未审查：<原因>"）
+审查：<实际审查模型，按 references/hosts.md>（没审就写"未审查：<原因>"）
 - <审查要点，最多 5 条，每条指向日志的某一行或某个时刻；没修或只修了一半的意见优先，两轮审查都算；审后改动没补审就写"未审查：<审查时 HEAD>..HEAD，<原因>">
 ```

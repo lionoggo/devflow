@@ -2,9 +2,7 @@
 
 **A trail a person can review after the fact: one row per decision, with the
 evidence.** From pstack `show-me-your-work`. Kept by 无人值守 always; from
-the first step by any playbook whose work, as it starts, has two or more stages, is
-expected to run over an hour, or arrives as a handed-over task for a long run
-(`SKILL.md`; pstack `poteto-mode`: long, multi-phase, or step-away work); by
+the first step when the start trigger in `SKILL.md` (**Playbooks**) holds; by
 排查 also once it passes an hour or a fix fails twice (`playbooks/debug.md`
 step 9); and by any playbook when the user asks for one ("记决策日志"). Short tasks that meet none of these do not keep one. A
 person reviews it through 复盘 (`playbooks/retro.md`); see **How a person reads it**.

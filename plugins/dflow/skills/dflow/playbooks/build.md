@@ -38,9 +38,9 @@ result without stopping.** From devflow-impl and pstack `feature`. Principles:
    check. Revert a refactor that leaves nothing easier to read; a missing
    feature or real bug found on the way is split out as its own change.
 6. Follow the plan's stages in order; each stage's check passes before
-   dependent work starts. Work with two or more stages, or expected to run
-   over an hour, keeps a decision log from its first step per
-   `references/decision-log.md` and ends with its audit and review. When a stage remains and the user asked for the whole
+   dependent work starts. Work the start trigger in `SKILL.md` covers keeps
+   a decision log from its first step per `references/decision-log.md` and
+   ends with its audit and review. When a stage remains and the user asked for the whole
    plan, continue into it.
 7. Finish with 验收 (`playbooks/verify.md`) for user-visible results; an
    end-to-end promise needs an end-to-end observation. Then `SKILL.md`

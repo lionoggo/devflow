@@ -12,7 +12,7 @@ description: "基于指定 Git 仓库与时间范围内当前 author 邮箱的�
 确认或从用户请求中解析以下信息：
 
 - Git 仓库路径和起止时间。用户未指定时间时，默认使用当前本地时间为截止点的最近 7 天，并在输出中写明实际起止时间；用户使用“本周”等有多种解释的表达时先询问，不擅自解释为自然周或最近 7 天。
-- 使用仓库当前配置的 `git config user.email` 作为唯一归属条件。无法读取时，说明原因并请用户提供邮箱；不要猜测姓名、使用全局 Git 配置或混入其他作者的提交。
+- 使用本仓库生效的 `git config user.email`（仓库没有单独配置时即全局配置）作为唯一归属条件，按作者邮箱字段精确相等筛选。无法读取时，说明原因并请用户提供邮箱；不要猜测姓名或混入其他作者的提交。
 - 默认只检查当前 `HEAD` 可达历史。用户明确要求跨分支汇总时才使用 `--all`，并按 commit hash 去重。
 - 默认不包含工作区修改。用户明确要求“包含未提交修改”时，才将其列为单独的“未提交进展”，不能写作已完成或已交付。
 - 用户指定“按创作引擎/素材管线/Studio”等主要事项分类时，将这些名称视为输出分类，而不是仅供参考的关键词。
@@ -25,8 +25,10 @@ description: "基于指定 Git 仓库与时间范围内当前 author 邮箱的�
 
 ```bash
 git config user.email
-git log HEAD --author="$AUTHOR_EMAIL" --since="$START" --until="$END" \
-  --format='%H%x09%ad%x09%s' --date=short
+git log HEAD --since="$START" --until="$END" \
+  --format='%H%x09%ae%x09%ad%x09%s' --date=short |
+  awk -F'\t' -v e="$AUTHOR_EMAIL" '$2 == e'
+# 不用 --author：它按正则匹配整个作者头，dev@x.com 会匹配 otherdev@x.com
 git show --format= --name-status <commit>
 git show --stat --format='%H%n%s%n%b' <commit>
 ```

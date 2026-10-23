@@ -1,6 +1,8 @@
 # 解释数字 (explain the number)
 
-Before you trust, report, or act on a measured number:
+Before you trust, report, or act on a measured or performance number (a
+plain count, such as commits or files, only needs its source and scope
+checked):
 
 - Name what bounds it (a core, a lock, the disk, the network, the load
   generator), from a profile or counters, not from reading code. If you cannot

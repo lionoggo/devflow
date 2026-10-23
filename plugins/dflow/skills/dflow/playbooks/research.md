@@ -54,11 +54,12 @@ pstack `how`, `why`. Principles: 以现状为准, 解释数字, 真实证据.
    方案.
 6. Output, lightest that answers it:
    - Default: a few paragraphs in the reply with the decisive locations.
-   - A document when the user asks or the chain is too long:
-     `docs/research/<topic>.md`, shaped by `references/research-report-template.md`,
-     with the commit hash; run it through `references/unslop.md` and commit it
-     locally. Diagrams per `references/research-diagrams.md` when a
-     relationship is hard to follow in prose.
+   - A document only when the user asks (a chain too long for the reply:
+     offer it in one line): `docs/research/<topic>.md`, shaped by
+     `references/research-report-template.md`, with the commit hash; run it
+     through `references/unslop.md`. Commit it only when the user asks.
+     Diagrams per `references/research-diagrams.md` when a relationship is
+     hard to follow in prose.
    - Industry comparison (`references/research-industry-comparison.md`; for
      outside sources `references/prior-art-research.md`) or an HTML demo
      (`references/research-html-demo.md`) only on request; otherwise offer it
