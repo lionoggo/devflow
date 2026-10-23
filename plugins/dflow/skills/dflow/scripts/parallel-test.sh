@@ -61,7 +61,7 @@ other=$(git commit-tree -m orphan "$(git write-tree)")
 awk -F'\t' -v OFS='\t' -v o="$other" 'NR>1 && $1=="c"{$5=o} {print}' .dflow/demo.units.tsv > .dflow/x && mv .dflow/x .dflow/demo.units.tsv
 out=$("$ps" scope demo c); [ $? = 1 ] && echo "$out" | grep -q "not an ancestor" && ok || bad "ancestor not checked: $out"
 
-# cleanup: a landed -> removed (with untracked listed); b unlanded with commits -> kept;
+# cleanup: a landed with an untracked file -> kept and listed; b unlanded with commits -> kept;
 # c has uncommitted tracked change -> kept; an unregistered worktree is untouched
 awk -F'\t' -v OFS='\t' -v b="$base" 'NR>1 && $1=="a"{$4="landed"} NR>1 && $1=="c"{$5=b} {print}' .dflow/demo.units.tsv > .dflow/x && mv .dflow/x .dflow/demo.units.tsv
 echo junk > "$t/wa/scratch.log"; echo edit >> "$t/wc/app/core.py"
@@ -69,8 +69,9 @@ git worktree add -q -b other "$t/other" "$base"
 mkdir -p .claude/worktrees; git worktree add -q -b worktree-agent-zz .claude/worktrees/agent-zz "$base"
 out=$("$ps" cleanup demo); rc=$?
 [ $rc = 1 ] && ok || bad "cleanup exit $rc"
+[ -f "$t/wa/scratch.log" ] && echo "$out" | grep -q "KEEP a" && echo "$out" | grep -q "scratch.log" && ok || bad "untracked file in a landed unit not kept and listed: $out"
+rm "$t/wa/scratch.log"; "$ps" cleanup demo >/dev/null
 [ ! -d "$t/wa" ] && ! git rev-parse -q --verify wa >/dev/null && ok || bad "landed worktree not removed"
-echo "$out" | grep -q "scratch.log" && ok || bad "untracked file not listed: $out"
 [ -d "$t/wb" ] && echo "$out" | grep -q "KEEP b" && ok || bad "unlanded unit not kept: $out"
 [ -d "$t/wc" ] && echo "$out" | grep -q "KEEP c" && ok || bad "dirty unit not kept: $out"
 [ -d "$t/other" ] && git rev-parse -q --verify other >/dev/null && ok || bad "unregistered worktree touched"
@@ -96,6 +97,17 @@ echo "$out" | grep -q "ORPHAN .*demo-zz" && ok || bad "orphan under .dflow/workt
 awk -F'\t' -v OFS='\t' 'NR>1 && $1=="w1"{$4="landed"} {print}' .dflow/demo.units.tsv > .dflow/x && mv .dflow/x .dflow/demo.units.tsv
 "$ps" cleanup demo >/dev/null
 [ ! -d "$wt" ] && ! git rev-parse -q --verify dflow-unit/demo-w1 >/dev/null && ok || bad "landed codex unit not removed"
+
+# worktree: a sent-back unit (tries > 0) is refused while its old worktree is not at the new base
+printf 'w3\t-\tapp/u.py\tdispatched\t%s\t-\t-\t-\t0\t-\n' "$base" >> .dflow/demo.units.tsv
+"$ps" worktree demo w3 >/dev/null; wt3="$r/.dflow/worktrees/demo-w3"
+( cd "$wt3"; echo U > app/u.py; git add -A; git commit -qm "unit w3 try 1" )
+head=$(git rev-parse HEAD); [ "$head" != "$base" ] || bad "test setup: HEAD should have moved past base"
+awk -F'\t' -v OFS='\t' -v h="$head" 'NR>1 && $1=="w3"{$5=h; $9=1} {print}' .dflow/demo.units.tsv > .dflow/x && mv .dflow/x .dflow/demo.units.tsv
+out=$("$ps" worktree demo w3); [ $? = 1 ] && echo "$out" | grep -q "sent back" && ok || bad "stale worktree of a sent-back unit not refused: $out"
+git worktree remove --force "$wt3"; git branch -D -q dflow-unit/demo-w3
+out=$("$ps" worktree demo w3); [ $? = 0 ] && [ "$(git -C "$wt3" rev-parse HEAD)" = "$head" ] && ok || bad "sent-back unit not recreated at the new base: $out"
+expect 0 "sent-back worktree at the new base is reused" "$ps" worktree demo w3
 
 expect 2 "usage" "$ps"
 expect 1 "bad slug" "$ps" overlap "../x"

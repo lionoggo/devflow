@@ -78,6 +78,12 @@ expect 0 "two commits in one row" "$rs" check demo
 expect 0 "older commit logged last" "$rs" check demo
 git reset -q --hard "$c1^"; expect 1 "HEAD behind logged commit" "$rs" check demo
 git reset -q --hard "$c1"
+# an unlogged commit before a logged one is still found: C1 unlogged, C2 logged -> 3, UNLOGGED C1
+cp .dflow/demo.tsv "$t/log"
+echo e >> src/a.py; git commit -qam four; u1=$(git rev-parse HEAD); echo f >> src/a.py; git commit -qam five; u2=$(git rev-parse HEAD)
+"$here/log.sh" .dflow/demo.tsv round "a" "b" "commit $u2" ok
+out=$("$rs" check demo); [ $? = 3 ] && [ "$(echo "$out" | grep '^UNLOGGED')" = "UNLOGGED $u1" ] && ok || bad "unlogged commit before a logged one: $out"
+cp "$t/log" .dflow/demo.tsv; git reset -q --hard "$c1"
 
 # wrong branch
 git checkout -qb other; expect 1 "wrong branch" "$rs" check demo; git checkout -q dflow/demo

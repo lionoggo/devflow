@@ -63,8 +63,13 @@ order. In Codex the steps are the same with the tools in
       conditions, and the protected checks. Pass: `git add` only the unit's
       paths, commit once, set `landed <sha>`, log it. Fail:
       `parallel.sh unland <slug> <id>`, send the unit back.
-   5. Sent back: `tries`+1, a fresh subagent from the new HEAD with the reason
-      in its brief. Never resume the old one for a sent-back unit. A worker
+   5. Sent back: `tries`+1, `base` set to the new HEAD, a fresh subagent
+      with the reason in its brief. Never resume the old one for a sent-back
+      unit. Claude Code gives the new subagent a new worktree and the brief
+      switches it to `base`. Codex: remove the unit's old worktree and branch
+      first (after checking they hold nothing you need; `parallel.sh
+      worktree` refuses an old one not at the new base), and before dispatch
+      check that `git -C <path> rev-parse HEAD` equals this `base`. A worker
       that stopped because of a usage limit or an API error (not its work)
       is not sent back: after the limit resets, resume that same agent with
       SendMessage (Codex: `send_input`) (its worktree keeps the progress), no
@@ -75,9 +80,8 @@ order. In Codex the steps are the same with the tools in
       pickup (below) and count a try.
 4. **Shared files** after every unit landed, as a normal unit.
 5. `parallel.sh cleanup <slug>` (Codex: `close_agent` each worker first): removes landed (and empty) units' worktrees
-   and branches, listing any untracked files it deletes; keeps and lists
-   units with unlanded commits or uncommitted tracked changes; never touches
-   worktrees outside the table.
+   and branches; keeps and lists units with unlanded commits, uncommitted
+   changes, or untracked files; never touches worktrees outside the table.
 6. Close as the playbook says (影响面, decision-log audit with
    `timeline.py`, which includes subagent transcripts, codex review). Reply
    line: `并行：N 路，落地 X 个单元，退回 Y 次，保留的 worktree：…`.

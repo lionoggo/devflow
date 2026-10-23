@@ -4,8 +4,12 @@
 # Usage:
 #   review.sh start <prompt-file> <out-file>  start the other model, read-only, in its own session;
 #                                             prompt on stdin, stdout and stderr to <out-file>; prints the pid
-#   review.sh wait <out-file> [seconds]       wait up to <seconds> (default 50) for it to end;
-#                                             exit 0 ended (its exit code in <out-file>.exit), 3 still running
+#   review.sh wait <out-file> [seconds] [limit]
+#                                             wait up to <seconds> (default 50) for it to end;
+#                                             exit 0 "ended exit <code>" (also in <out-file>.exit),
+#                                             3 "running", 1 "ended lost" (the process is gone without an
+#                                             exit code) or "ended timeout" (over <limit> seconds since start,
+#                                             default 1200; the reviewer is stopped)
 # The other model: from Codex `claude -p --tools Read,Grep,Glob` (read and search only: plan mode would
 # write a plan file under ~/.claude/plans); from Claude Code
 # `codex exec -s read-only -`. DFLOW_REVIEW_CMD (a shell command) replaces it, for tests.
@@ -28,12 +32,14 @@ start)
     elif [ "$(host)" = codex ]; then set -- claude -p --tools Read,Grep,Glob
     else set -- codex exec -s read-only -
     fi
-    rm -f "$out.exit"
+    rm -f "$out.exit" "$out.pid"
     python3 -I - "$prompt" "$out" "$@" <<'PY'
-import os, subprocess, sys
+import os, subprocess, sys, time
 prompt, out, cmd = sys.argv[1], sys.argv[2], sys.argv[3:]
 pid = os.fork()
 if pid:
+    with open(out + ".pid", "w") as f:
+        f.write("%d %d\n" % (pid, int(time.time())))  # for wait: pid and start time
     print(pid)
     sys.exit(0)
 os.setsid()  # its own session: the host's end-of-call cleanup does not reach it
@@ -51,10 +57,17 @@ with open(out + ".exit", "w") as f:
 PY
     ;;
 wait)
-    out=${2:-}; secs=${3:-50}; [ -n "$out" ] || usage
+    out=${2:-}; secs=${3:-50}; limit=${4:-1200}; [ -n "$out" ] || usage
+    read -r pid started < "$out.pid" 2>/dev/null || { pid=""; started=$(date +%s); }
     end=$(( $(date +%s) + secs ))
-    while [ ! -f "$out.exit" ] && [ "$(date +%s)" -lt "$end" ]; do sleep 2; done
+    while [ ! -f "$out.exit" ] && [ "$(date +%s)" -lt "$end" ]; do
+        [ -z "$pid" ] || kill -0 "$pid" 2>/dev/null || break
+        [ $(( $(date +%s) - started )) -lt "$limit" ] || break
+        sleep 2
+    done
     if [ -f "$out.exit" ]; then echo "ended exit $(cat "$out.exit")"; exit 0; fi
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then echo "ended lost"; exit 1; fi
+    if [ $(( $(date +%s) - started )) -ge "$limit" ]; then kill -- -"$pid" 2>/dev/null; echo "ended timeout"; exit 1; fi
     echo "running"; exit 3 ;;
 *) usage ;;
 esac

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tests for scratch.sh: path under the repo, exclude line added once, nothing shows in git status.
+# Tests for scratch.sh: path under the repo, exclude line added once, nothing shows in git status,
+# a new directory on every call.
 set -u
 here=$(cd "$(dirname "$0")" && pwd); pass=0; fail=0
 ok() { pass=$((pass+1)); }; bad() { fail=$((fail+1)); echo "FAIL $*"; }
@@ -11,6 +12,8 @@ case $d in "$(cd "$t/repo" && pwd -P)"/.dflow/tmp/*-probe|"$t/repo"/.dflow/tmp/*
 (cd "$t/repo" && "$here/scratch.sh" >/dev/null)
 [ "$(grep -cx '.dflow/' "$t/repo/.git/info/exclude")" = 1 ] && ok || bad "exclude line count"
 touch "$d/x"; [ -z "$(git -C "$t/repo" status --porcelain)" ] && ok || bad "scratch shows in git status"
+a=$(cd "$t/repo" && "$here/scratch.sh" twice); b=$(cd "$t/repo" && "$here/scratch.sh" twice)
+[ -n "$a" ] && [ -d "$a" ] && [ -d "$b" ] && [ "$a" != "$b" ] && ok || bad "same name twice gave one directory: $a $b"
 mkdir "$t/plain"; d2=$(cd "$t/plain" && "$here/scratch.sh"); case $d2 in */plain/.dflow/tmp/*) ok ;; *) bad "outside repo: $d2" ;; esac
 echo "scratch-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]

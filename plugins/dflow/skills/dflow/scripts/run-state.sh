@@ -13,8 +13,8 @@
 # Session: the nearest claude or codex process above this shell is the host; its session id
 #   is $CLAUDE_CODE_SESSION_ID or $CODEX_THREAD_ID and its pid is the owner pid.
 #   DFLOW_SESSION_ID and DFLOW_AGENT_PID override both (tests).
-#   check       per-round checks; exit 0 ok, 1 stop and report, 3 commits after the last logged
-#               one that no row names (one "UNLOGGED <sha>" line each, oldest first), 4 deadline passed
+#   check       per-round checks; exit 0 ok, 1 stop and report, 3 commits in base..HEAD that no
+#               row names (one "UNLOGGED <sha>" line each, oldest first), 4 deadline passed
 #   caffeinate  start `caffeinate -i` until the deadline and record its pid in the lease
 #   release     stop the recorded caffeinate (only if that pid is still caffeinate), drop the lease
 #   scope       list files changed base..HEAD that are protected or outside allow; exit 1 if any
@@ -92,13 +92,14 @@ check)
     dirty=$(git -C "$root" status --porcelain --untracked-files=all | grep -v ' \.dflow/' || true)
     [ -z "$dirty" ] && echo "ok clean" || { echo "FAIL uncommitted changes of unknown origin:"; echo "$dirty"; exit 1; }
     logged=$(awk -F'\t' '{ s = $5; while (match(s, /commit [0-9a-f]{7,40}/)) { print substr(s, RSTART + 7, RLENGTH - 7); s = substr(s, RSTART + RLENGTH) } }' "$log" 2>/dev/null)
+    mbase=$(git -C "$root" rev-parse --verify -q "$(field "$man" base)^{commit}") || die "manifest base not found"
     last=$(printf '%s\n' "$logged" | tail -1)
-    [ -n "$last" ] || last=$(field "$man" base)
+    [ -n "$last" ] || last=$mbase
     last=$(git -C "$root" rev-parse --verify -q "$last^{commit}") || die "logged commit not found"
     head=$(git -C "$root" rev-parse HEAD)
     dl=$(epoch "$(field "$man" deadline)") || die "bad deadline"
     git -C "$root" merge-base --is-ancestor "$last" HEAD || die "HEAD $head does not contain the last logged commit $last"
-    unl=$(git -C "$root" rev-list --reverse "$last..HEAD" | while read -r c; do
+    unl=$(git -C "$root" rev-list --reverse "$mbase..HEAD" | while read -r c; do
         printf '%s\n' "$logged" | awk -v c="$c" 'NF && index(c, $0) == 1 { f = 1 } END { exit !f }' || echo "$c"; done)
     if [ -n "$unl" ]; then printf 'UNLOGGED %s\n' $unl; exit 3; fi
     echo "ok head $head"

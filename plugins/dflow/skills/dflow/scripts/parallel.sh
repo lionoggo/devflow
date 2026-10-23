@@ -10,11 +10,13 @@
 #   overlap  <slug>       unit paths pairwise disjoint, inside the manifest's allow, outside protect
 #   worktree <slug> <id>  for a host whose subagents have no worktree isolation (Codex): create
 #                         .dflow/worktrees/<slug>-<id> on branch dflow-unit/<slug>-<id> at the
-#                         unit's base; prints the path and branch for the brief and the table
+#                         unit's base; prints the path and branch for the brief and the table.
+#                         A sent-back unit (tries > 0) whose worktree is not at the new base is refused
 #   scope    <slug> <id>  base is an ancestor of the unit branch; every changed file is in the unit's paths
 #   land     <slug> <id>  clean tree + ancestor check, then `cherry-pick -n base..branch`; on conflict abort
 #   unland   <slug> <id>  undo an uncommitted land: unstage and restore changed files, delete added ones
-#   cleanup  <slug>       remove worktrees/branches of landed (or empty) units; keep and list the rest
+#   cleanup  <slug>       remove worktrees/branches of landed (or empty) units whose worktree has no
+#                         uncommitted or untracked files; keep and list the rest
 # Exit 0 ok, 1 refused or found a problem (details on stdout), 2 usage.
 set -u
 cmd=${1:-}; slug=${2:-}; uid=${3:-}
@@ -118,11 +120,14 @@ worktree)
     git rev-parse -q --verify "$base^{commit}" >/dev/null || die "base $base not found"
     wt="$root/.dflow/worktrees/$slug-$uid"; br="dflow-unit/$slug-$uid"
     have=$(git worktree list --porcelain | awk -v w="$wt" '$0=="worktree "w{f=1;next} f&&/^branch /{print substr($0,19);exit} /^$/{f=0}')
+    tries=$(col "$uid" tries); redo="remove the old worktree and branch first (git worktree remove $wt; git branch -D $br), after checking they hold nothing you need"
     if [ -n "$have" ]; then
         [ "$have" = "$br" ] || die "$wt exists on branch $have"
+        at=$(git -C "$wt" rev-parse HEAD)
+        case ${tries:-0} in 0|-) ;; *) [ "$at" = "$(git rev-parse "$base^{commit}")" ] || die "unit $uid was sent back and $wt is at $at, not base $base; $redo" ;; esac
         echo "ok worktree $wt branch $br (already there)"; exit 0
     fi
-    git rev-parse -q --verify "refs/heads/$br" >/dev/null && die "branch $br already exists; a sent-back unit gets a new id or cleanup first"
+    git rev-parse -q --verify "refs/heads/$br" >/dev/null && die "branch $br already exists; $redo"
     mkdir -p "$root/.dflow/worktrees"
     git worktree add -q -b "$br" "$wt" "$base" || die "git worktree add failed"
     echo "ok worktree $wt branch $br" ;;
@@ -145,15 +150,11 @@ cleanup)
         br=$(col "$id" branch); st=$(col "$id" state); bs=$(col "$id" base)
         [ -n "$br" ] && [ "$br" != - ] || continue
         wt=$(printf '%s\n' "$wl" | awk -v b="refs/heads/$br" '/^worktree /{w=substr($0,10)} $0=="branch "b{print w; exit}')
-        left=""; tracked=""
-        if [ -n "$wt" ]; then
-            left=$(git -C "$wt" status --porcelain --untracked-files=all)
-            tracked=$(printf '%s\n' "$left" | grep -v '^??' || true)
-        fi
+        left=""
+        [ -z "$wt" ] || left=$(git -C "$wt" status --porcelain --untracked-files=all)
         commits=0; git rev-parse -q --verify "$br^{commit}" >/dev/null && [ -n "$bs" ] && commits=$(git rev-list --count "$bs..$br" 2>/dev/null || echo 0)
-        if [ -n "$tracked" ]; then echo "KEEP $id $br: uncommitted tracked changes in $wt:"; echo "$tracked"; bad=1; continue; fi
+        if [ -n "$left" ]; then echo "KEEP $id $br: uncommitted or untracked files in $wt:"; echo "$left"; bad=1; continue; fi
         if [ "$st" != landed ] && [ "$commits" != 0 ]; then echo "KEEP $id $br: $commits unlanded commit(s)"; bad=1; continue; fi
-        [ -z "$left" ] || { echo "DELETING untracked files in $wt:"; echo "$left"; }
         [ -z "$wt" ] || git worktree remove --force "$wt"
         git branch -D -q "$br" 2>/dev/null
         echo "ok removed $id ($br${wt:+, $wt})"
