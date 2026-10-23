@@ -148,6 +148,7 @@ unland)
     fi
     echo "ok undid land of $uid"; [ -n "$added" ] && echo "deleted: $added"; [ -z "$(dirty)" ] || { echo "FAIL tree still dirty:"; dirty; exit 1; } ;;
 cleanup)
+    [ -z "$uid" ] || [ "$uid" = --ignored-ok ] || die "unknown cleanup option: $uid"
     need_table; wl=$(git worktree list --porcelain); bad=0
     for id in $(ids); do
         br=$(col "$id" branch); st=$(col "$id" state); bs=$(col "$id" base)
@@ -156,12 +157,13 @@ cleanup)
         left=""; ign=""
         if [ -n "$wt" ]; then
             left=$(git -C "$wt" status --porcelain --untracked-files=all)
-            [ "$uid" = --ignored-ok ] || ign=$(git -C "$wt" status --porcelain --ignored | grep '^!!' || true)
+            ign=$(git -C "$wt" status --porcelain --ignored | grep '^!!' || true)
         fi
         commits=0; git rev-parse -q --verify "$br^{commit}" >/dev/null && [ -n "$bs" ] && commits=$(git rev-list --count "$bs..$br" 2>/dev/null || echo 0)
         if [ -n "$left" ]; then echo "KEEP $id $br: uncommitted or untracked files in $wt:"; echo "$left"; bad=1; continue; fi
-        if [ -n "$ign" ]; then echo "KEEP $id $br: ignored files in $wt (rerun with --ignored-ok once they are this task's own output):"; echo "$ign"; bad=1; continue; fi
+        if [ -n "$ign" ] && [ "$uid" != --ignored-ok ]; then echo "KEEP $id $br: ignored files in $wt (not removed; see cleanup in references/parallel.md):"; echo "$ign"; bad=1; continue; fi
         if [ "$st" != landed ] && [ "$commits" != 0 ]; then echo "KEEP $id $br: $commits unlanded commit(s)"; bad=1; continue; fi
+        [ -z "$ign" ] || { echo "DELETING ignored files in $wt:"; echo "$ign"; }
         [ -z "$wt" ] || git worktree remove --force "$wt"
         git branch -D -q "$br" 2>/dev/null
         echo "ok removed $id ($br${wt:+, $wt})"

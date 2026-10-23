@@ -74,7 +74,8 @@ rm "$t/wa/scratch.log"
 echo '*.out' >> "$(git -C "$t/wa" rev-parse --git-path info/exclude)"; echo sample > "$t/wa/user.out"
 out2=$("$ps" cleanup demo)
 [ -f "$t/wa/user.out" ] && echo "$out2" | grep -q "KEEP a .*ignored" && echo "$out2" | grep -q "user.out" && ok || bad "ignored file in a landed unit not kept and listed: $out2"
-"$ps" cleanup demo --ignored-ok >/dev/null
+out3=$("$ps" cleanup demo --ignored); [ $? = 1 ] && echo "$out3" | grep -q "unknown cleanup option" && [ -f "$t/wa/user.out" ] && ok || bad "unknown option not refused: $out3"
+out3=$("$ps" cleanup demo --ignored-ok); echo "$out3" | grep -q "DELETING ignored" && echo "$out3" | grep -q "user.out" && ok || bad "deleted ignored files not listed: $out3"
 [ ! -d "$t/wa" ] && ! git rev-parse -q --verify wa >/dev/null && ok || bad "landed worktree not removed"
 [ -d "$t/wb" ] && echo "$out" | grep -q "KEEP b" && ok || bad "unlanded unit not kept: $out"
 [ -d "$t/wc" ] && echo "$out" | grep -q "KEEP c" && ok || bad "dirty unit not kept: $out"

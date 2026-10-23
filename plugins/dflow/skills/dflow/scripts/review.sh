@@ -10,7 +10,7 @@
 #                                             3 "running", 1 "ended lost" (no exit code and no live process
 #                                             of this review on record) or "ended timeout" (over <limit>
 #                                             seconds since start, default 1200; its process group is stopped,
-#                                             or "ended timeout, still running <pgid>" when it would not stop)
+#                                             or the line says it is still running or was not stopped)
 # The wait only signals a process group whose leader is this review's wrapper (its command names
 # <out-file>); anything else is reported, never killed. Times are wall-clock seconds.
 # The other model: from Codex `claude -p --tools Read,Grep,Glob` (read and search only: plan mode would
@@ -31,7 +31,7 @@ host() { # nearest claude or codex process above this shell
 case $cmd in
 start)
     prompt=${2:-}; out=${3:-}; [ -f "$prompt" ] && [ -n "$out" ] || usage
-    case $out in /*) ;; *) out="$PWD/$out" ;; esac
+    out="$(cd "$(dirname "$out")" 2>/dev/null && pwd -P)/$(basename "$out")"
     if [ -n "${DFLOW_REVIEW_CMD:-}" ]; then set -- sh -c "$DFLOW_REVIEW_CMD"
     elif [ "$(host)" = codex ]; then set -- claude -p --tools Read,Grep,Glob
     else set -- codex exec -s read-only -
@@ -62,14 +62,18 @@ PY
     ;;
 wait)
     out=${2:-}; secs=${3:-50}; limit=${4:-1200}; [ -n "$out" ] || usage
-    case $out in /*) ;; *) out="$PWD/$out" ;; esac
+    out="$(cd "$(dirname "$out")" 2>/dev/null && pwd -P)/$(basename "$out")"
     pid=""; started=""
     [ -f "$out.pid" ] && read -r pid started < "$out.pid" 2>/dev/null
     case "$pid:$started" in *[!0-9:]*|:*|*:) pid=""; started="" ;; esac  # missing or old format: no record
-    mine() { # the recorded pid still leads this review's process group
-        [ -n "$pid" ] && [ "$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')" = "$pid" ] &&
+    canps=1; ps -o pid= -p $$ >/dev/null 2>&1 || canps=0  # some sandboxes refuse ps
+    mine() { # the recorded pid still leads this review's process group (without ps: is alive)
+        [ -n "$pid" ] || return 1
+        [ $canps = 1 ] || { kill -0 "$pid" 2>/dev/null; return; }
+        [ "$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')" = "$pid" ] &&
             ps -ww -o command= -p "$pid" 2>/dev/null | grep -qF -- "$out"
     }
+    group() { kill -0 -- -"$pid" 2>/dev/null; }  # any process of the group left
     end=$(( $(date +%s) + secs ))
     while [ ! -f "$out.exit" ] && [ "$(date +%s)" -lt "$end" ]; do
         mine || break
@@ -79,10 +83,11 @@ wait)
     if [ -f "$out.exit" ]; then echo "ended exit $(cat "$out.exit")"; exit 0; fi
     mine || { echo "ended lost"; exit 1; }
     if [ $(( $(date +%s) - started )) -ge "$limit" ]; then
+        [ $canps = 1 ] || { echo "ended timeout, not stopped: cannot check that $pid is this review"; exit 1; }
         kill -TERM -- -"$pid" 2>/dev/null
-        for _ in 1 2 3 4 5; do pgrep -g "$pid" >/dev/null || break; sleep 1; done
-        pgrep -g "$pid" >/dev/null && { kill -KILL -- -"$pid" 2>/dev/null; sleep 1; }
-        if pgrep -g "$pid" >/dev/null; then echo "ended timeout, still running $pid"; else echo "ended timeout"; fi
+        for _ in 1 2 3 4 5; do group || break; sleep 1; done
+        group && { kill -KILL -- -"$pid" 2>/dev/null; sleep 1; }
+        if group; then echo "ended timeout, still running $pid"; else echo "ended timeout"; fi
         exit 1
     fi
     echo "running"; exit 3 ;;
