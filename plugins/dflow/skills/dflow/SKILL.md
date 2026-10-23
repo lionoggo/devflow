@@ -1,6 +1,6 @@
 ---
 name: dflow
-description: "The single entry for development work: routes a goal to a playbook (teach, research, debug, plan, review, build, verify, unattended, handoff, status, retro, report, ship, tune, impact, prototype, polish), works without blocking on reversible steps, and closes with evidence. Only when the user names dflow (/dflow or $dflow; as a plugin, dflow:dflow)."
+description: "The single entry for development work: routes a goal to a playbook (teach, research, debug, plan, review, build, verify, unattended, handoff, status, retro, report, ship, tune, impact, prototype, polish), works without blocking on reversible steps, and closes with evidence. Only when the user names dflow (/dflow:dflow or $dflow:dflow; Claude Code also takes /dflow)."
 disable-model-invocation: true
 ---
 
@@ -14,8 +14,8 @@ to this file's directory.
 
 1. If the goal is unclear after a long discussion, restate it in one sentence
    first ("我理解的目标是…").
-2. If the request's first word (after `/dflow`, `$dflow`, or the plugin's
-   `/dflow:dflow` / `$dflow:dflow`) is exactly a playbook's name or id from
+2. If the request's first word (after `/dflow:dflow`, `$dflow:dflow`, or
+   Claude Code's short `/dflow`) is exactly a playbook's name or id from
    the table below (`复盘`, `retro`), use that playbook without matching;
    this beats the follow-up rule, and step 3 still comes first. Only the
    first word counts, not a name later in the text. Otherwise match the request to one playbook in the

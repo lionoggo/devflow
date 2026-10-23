@@ -35,7 +35,7 @@ done
 
 # dflow's own prose follows its rules; unslop.md quotes the patterns it bans, so it is exempt.
 skill="$here/.."
-for f in "$skill"/SKILL.md "$skill"/playbooks/*.md "$skill"/references/*.md "$skill"/principles/*.md "$skill"/../dflow-report/SKILL.md; do
+for f in "$skill"/SKILL.md "$skill"/playbooks/*.md "$skill"/references/*.md "$skill"/principles/*.md "$skill"/../report/SKILL.md; do
     [ "$f" = "$skill/references/unslop.md" ] && continue
     hits=$("$chk" "$f"); [ $? = 0 ] && ok || bad "slop in dflow's own text: $hits"
 done
