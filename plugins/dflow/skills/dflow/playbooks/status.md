@@ -11,10 +11,15 @@ on them. Read-only.** From pstack `ketchup`. Principles: 以现状为准, 真实
    choice, an approval, an outside or irreversible action, access you lack.
    Work you can still do yourself is not one, even if you would like a go
    ahead: say it in one line under 我还能继续做的, never as a decision.
+   For each item collect the call, your pick, what it changes for the user,
+   the evidence for the pick, and its risk (a low one too, in a phrase).
 3. Write it the way one person catches up another: what changed for the
    user, not how you did it. Leave out hashes, paths, and commands unless the
-   user needs one to act. Under about 150 Chinese characters plus the list.
-   No diagram unless asked.
+   user needs one to act. What happened stays under about 150 Chinese
+   characters; the decisions take the room they need, and no item is cut or
+   shrunk to fit. Items sharing one call: the call and pick once, then one
+   line per item, riskiest first. Say what waiting costs only when it is more
+   than a delay (a deadline, lost data). No diagram unless asked.
 
 **Reply:**
 
@@ -23,6 +28,6 @@ on them. Read-only.** From pstack `ketchup`. Principles: 以现状为准, 真实
 - <要求的事>：<结果>（<完成 / 进行中 / 失败 / 未验证>）
 - 我还能继续做的：<一行；没有就省略>
 需要你定：
-1. <决定>。推荐 <选项>，因为 <理由>。
-   不回复的话：<会发生什么>
+1. <决定>。推荐 <选项>。影响：<对你有什么变化>。依据：<证据>。风险：<一句>。
+   等待的代价：<只在有截止日期或会丢数据时写>
 ```

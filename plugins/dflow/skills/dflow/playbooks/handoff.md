@@ -36,6 +36,7 @@ Leave out transcripts, raw logs, credentials, and unrelated file contents.
 约束：保留无关改动；只改 <范围，或只读>；<架构约束>
 
 开始前先核对分支、HEAD 和未提交文件是否与"现状"一致；不一致就停下报告差异。
+已完成的不要重做，从"剩余"的第一项开始。这里说已通过的检查，宣布完成前在真实产物上重跑一次。
 用 /dflow 开始，按对应流程做；不要再转交，不要换工作区。
 ```
 

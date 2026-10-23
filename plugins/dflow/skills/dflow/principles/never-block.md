@@ -13,6 +13,9 @@ a blocked one, because code changes are reviewable and every unit is committed.
   `default:`), and report it with the alternative.
 - Irreversible or external steps always ask: see **Authority** in `SKILL.md`.
 - The user's own constraints in the prompt ("先别改代码") override this.
+- No is an answer. Asked whether to do something, invited to add scope, or
+  shown an approach, give your real judgment; when it does not earn its
+  place, say so and why. A recommendation is a judgment, not agreement.
 
 You skipped this when a reply ends with a question the repo, a command, or an
 experiment could have answered, or when you stopped after a plan the user had

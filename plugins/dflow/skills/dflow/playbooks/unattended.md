@@ -202,8 +202,9 @@ tree is clean, and the first step on resume.
 3. Timeline: `python3 -I $S/scripts/timeline.py --say <every session id in the
    log's start rows>` into a directory from `$S/scripts/scratch.sh close`. A missing
    transcript is listed as 未核实.
-4. Cross-check: each progress row matches a real commit in
-   `git log <base>..HEAD`; each check the log claims appears in the timeline.
+4. Cross-check, reading the timeline as `references/decision-log.md` step 2
+   says: each progress row matches a real commit in `git log <base>..HEAD`;
+   each check the log claims appears in the timeline.
    For each acceptance item, read one test that carries it against
    `principles/test-behavior.md`; one that would pass with the feature
    removed does not count for that item, so report it as 未证实.

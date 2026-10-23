@@ -20,13 +20,15 @@ and devflow-debug. Principles: 找根因, 通用解, 真实证据, 测行为.
    it fail for the intended reason; skip it when the test would be expensive,
    integration-heavy, or unclear. Never edit a test to match a wrong fix.
 6. Make the smallest fix the evidence justifies. Revert anything a refuted
-   hypothesis motivated. Fix every instance of the pattern.
+   hypothesis motivated. Fix every instance of the pattern. A fix that needs
+   a new module, type, or public interface runs `references/sketch.md` first.
 7. Rerun the original reproduction on the same surface, plus the relevant
    tests. Then `SKILL.md` **After any change**: smoke nearby inputs and the
    failure path, and write the 影响面 line. Commit locally (test first, then
    fix, when there is a test).
 8. If this is the second failed fix for the same symptom, stop fixing: write
-   down the shared premise, run the cross-model review, and change approach.
+   down the shared premise, test it per `principles/root-cause.md`, run the
+   cross-model review, and let the evidence decide the next fix.
 9. An investigation the start trigger in `SKILL.md` covers keeps a decision
    log from step 1. Otherwise one past an hour, or one that reached step 8,
    starts it then per `references/decision-log.md`: first one row each for

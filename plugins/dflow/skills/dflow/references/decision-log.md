@@ -37,6 +37,9 @@ person reviews it through 复盘 (`playbooks/retro.md`); see **How a person read
      between and no rerun, it is a check claimed without a run, not 未核实.
      A row the timeline marks `…[截断]` is not evidence of absence: read that
      entry in the raw transcript before calling anything 未核实.
+     Never Read the timeline file whole: grep it and read slices by line
+     number. Past about 100KB, hand the row-by-row match to one read-only
+     subagent that returns only the mismatches with line numbers.
      Fix gaps with new rows, never by editing.
   3. `python3 -I scripts/timeline.py --danger <the same session ids>`: list
      every flagged command (subagents included) in the reply, each with

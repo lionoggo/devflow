@@ -22,6 +22,6 @@ a paragraph that still names goal, scope, verify, and report. From pstack
          （ts phase decision why evidence result），证据指向提交或 path:line
 规则     只按本说明做，不加载其他流程类 skill（如 devflow-*）；
          提交信息 <type>(<scope>): <subject>，不超过 72 字符；只提交通过检查的改动；
-         新写的测试要调用被测代码并断言用户看到的确切结果：被测函数什么都不返回或返回错值时仍能通过的测试
-         （只断言存在/不存在、只断言被调用、断言测试自己造的数据、断言一个本来就成立的条件）不算覆盖验收项
+         新写的测试要调用被测代码并断言用户看到的确切结果：把被测行为改坏（返回错值、跳过或重复副作用）后
+         仍能通过的测试不算覆盖验收项；只改内部、结果不变时会失败的测试也要改写
 ```

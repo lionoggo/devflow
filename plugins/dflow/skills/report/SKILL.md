@@ -73,6 +73,8 @@ git diff --stat
 
 正文应能直接粘贴到周报中。不要默认输出 author 邮箱、commit 列表、文件路径或证据说明；时间范围可在事项列表前用一行简短文字标明。
 
+成稿按 `../dflow/references/unslop.md` 改写，再用 `../dflow/scripts/slop-check.sh -` 检查，命中的逐条修掉或说明理由。
+
 用户明确要求证据时，使用与正文分离的附录：
 
 ```markdown

@@ -29,7 +29,14 @@ result without stopping.** From devflow-impl and pstack `feature`. Principles:
 5. Preserve unrelated dirty work; never stage it. Reuse existing checks before
    adding a permanent test; add one only for a named, credible regression.
    Every test you add or keep as evidence for an acceptance item follows
-   `principles/test-behavior.md`: it must fail if the feature is removed.
+   `principles/test-behavior.md`: it must fail if the feature is removed,
+   and must not fail when only the internals change.
+   A refactor (rename, extract, merge, move; no behavior change) first pins
+   current behavior with a characterization test, a snapshot, or a script
+   that diffs old and new output; type check and lint are not a pin. Keep
+   the pin green after every small step and finish with the equivalence
+   check. Revert a refactor that leaves nothing easier to read; a missing
+   feature or real bug found on the way is split out as its own change.
 6. Follow the plan's stages in order; each stage's check passes before
    dependent work starts. Work with two or more stages, or expected to run
    over an hour, keeps a decision log from its first step per

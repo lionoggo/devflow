@@ -9,4 +9,4 @@ Before you trust, report, or act on a measured number:
   cached work, code that never ran, an untuned side, noise, a piece too small
   to matter end to end.
 - Keep run count, spread, and limiter with the number. For performance, run
-  `references/benchmark-checklist.md` when it exists.
+  `references/benchmark-checklist.md`.

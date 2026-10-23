@@ -27,7 +27,9 @@ Principles: 真实证据, 对齐目标, 不停下等人.
    When a user-facing project has none, say so in the reply and offer to
    generate one with `references/create-verification-skill.md`.
 4. For each criterion, run the cheapest evidence at the level it needs; a
-   user-visible claim needs one observation on the real path. Evidence that
+   user-visible claim needs one observation on the real path. A performance
+   criterion (faster, latency, throughput, memory) passes only after its
+   numbers go through `references/benchmark-checklist.md`. Evidence that
    touches shared or external state (real data, messages, payments, deploys,
    dependency installs) asks first.
 5. Run end-to-end items last, on the final integrated state (fresh build, real
@@ -51,6 +53,7 @@ or clean to get a baseline.
 
 ```text
 **验收结论**：<通过 / 未通过 / 部分通过 / 无法完成验收>。<一句话>
+- 候选：<HEAD 提交号或 diff 范围>
 - 标准与证据：<每条：标准 → 怎么查的（层级）→ 结果；推导出的标准注明>
 - 问题与修复：<确认的缺陷，修复提交>
 - 未覆盖：<没观察到的项、给你的人工检查清单、环境或基线问题>

@@ -119,6 +119,10 @@ other) ends the same way, before its own reply:
    commit messages, PR bodies) goes through `references/unslop.md`; run
    `scripts/slop-check.sh <file>` or `… -` on stdin and fix or justify each
    unexempted hit.
+5. Code comments say only the why the code cannot show. Tests and
+   verification scripts get no step narration ("第一步", "Phase 1"); the
+   assertion or log string names the step. This holds for a subagent's diff
+   too.
 
 ## Authority
 
@@ -185,7 +189,7 @@ missing.
 | 找根因 | Debugging | Reproduce, then ask why until the root; on a second failure, question the premise | `principles/root-cause.md` |
 | 通用解 | Fixing or designing | Say whether it holds for other inputs; no special-casing one instance | `principles/general-fix.md` |
 | 先减后加 | Plans, reviews, skill design | Delete and reuse first; justify every new mechanism | `principles/subtract-first.md` |
-| 测行为 | Writing or keeping a test | Assert the real result; a test that passes when everything returns empty goes | `principles/test-behavior.md` |
+| 测行为 | Writing or keeping a test | Assert what users observe; a test that passes with the behavior broken, or fails when only internals change, goes | `principles/test-behavior.md` |
 | 小步可验证 | Multi-step work | Each unit ends in a check; go on only when it passes | `principles/verifiable-units.md` |
 | 解释数字 | Reporting a measured number | Name what limits it and rule out what else it could measure | `principles/explain-number.md` |
 | 以现状为准 | Citing docs or old plans | Check against current code; ask for missing evidence, never invent it | `principles/current-state.md` |
