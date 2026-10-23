@@ -2,9 +2,10 @@
 
 Review to reduce real risk, not as a ritual. It tries to disprove readiness.
 
-- **Default before a plan is final:** cross-model, read-only:
+- **Default before a plan is final:** cross-model, read-only, with the call
+  for this host in `references/hosts.md` (from Claude Code:
   `codex exec -s read-only --ephemeral --skip-git-repo-check -C <repo> -o <out.md>`
-  with the prompt below on stdin. Give it the plan path and the evidence, not
+  with the prompt below on stdin; from Codex: `scripts/review.sh`). Give it the plan path and the evidence, not
   your reasoning or your verdict. When the plan rests on a requirement or
   spec document, give that document too and keep the 需求对照 line in the
   prompt; otherwise drop that line. Tell it this is a non-interactive run that
@@ -13,8 +14,8 @@ Review to reduce real risk, not as a ritual. It tries to disprove readiness.
 - The planner stays the owner: check each finding against current evidence,
   then adopt, defer, or reject it with the reason. At most two rounds; product,
   architecture, security, or public-contract disagreements go to the user.
-- codex unavailable or failing: report "未审查：<原因>". No Claude
-  self-review in its place.
+- The other model unavailable or failing: report "未审查：<原因>". No
+  self-review by this host's model in its place.
 
 Lenses, only the relevant ones: ownership and boundaries · outcome closure ·
 vertical slice vs premature generalization · generality across inputs ·

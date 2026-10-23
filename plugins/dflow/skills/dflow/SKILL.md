@@ -85,7 +85,8 @@ and read-only playbooks keep none unless the user asks (复盘 never writes
 rows into the log it reviews). A playbook file that does not exist yet: say
 so in one line, then work by the rules in this file.
 
-**Read-only playbooks** (讲解, 调研, 评审, 进展, 复盘, 周报) change no product
+**Read-only playbooks** (讲解, 调研, 评审, 进展, 复盘, 周报, and 验收 without
+repair authority, `playbooks/verify.md` step 7) change no product
 file and commit nothing. Temporary evidence in the scratch directory is
 always allowed; a lasting document only when the user asks for one.
 

@@ -81,7 +81,10 @@ order. In Codex the steps are the same with the tools in
 4. **Shared files** after every unit landed, as a normal unit.
 5. `parallel.sh cleanup <slug>` (Codex: `close_agent` each worker first): removes landed (and empty) units' worktrees
    and branches; keeps and lists units with unlanded commits, uncommitted
-   changes, or untracked files; never touches worktrees outside the table.
+   changes, untracked files, or ignored files; never touches worktrees
+   outside the table. Ignored files that are this task's own output (build
+   output, caches it made) go with `cleanup <slug> --ignored-ok`; anything
+   else is listed for the user.
 6. Close as the playbook says (影响面, decision-log audit with
    `timeline.py`, which includes subagent transcripts, codex review). Reply
    line: `并行：N 路，落地 X 个单元，退回 Y 次，保留的 worktree：…`.

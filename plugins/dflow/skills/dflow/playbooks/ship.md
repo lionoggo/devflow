@@ -32,8 +32,8 @@ the user says so.** From devflow-commit and pstack `opening-a-pr`, `babysit`,
    - 影响面: who or what it touches and why that is safe (`references/impact.md`).
    - 验证: one to three real runs and their results. Evidence from a commit
      other than HEAD: read `git diff <sha>..HEAD --stat` first; reuse it only
-     when the diff is docs or comments (a changed test or check script is
-     rerun), otherwise rerun the affected evidence or write 验证于 <sha>.
+     when the diff is docs or comments that steer nothing (a changed test,
+     check script, skill, rule file, or prompt is rerun), otherwise rerun the affected evidence or write 验证于 <sha>.
 6. Following a PR ("跟进", "看下 CI"): re-read the PR, checks, and threads
    before every step; never reuse an old reading. Order: conflicts (report,
    do not rebase), then review threads, then CI. A CI failure in code the diff

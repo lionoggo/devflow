@@ -15,8 +15,11 @@
 #   scope    <slug> <id>  base is an ancestor of the unit branch; every changed file is in the unit's paths
 #   land     <slug> <id>  clean tree + ancestor check, then `cherry-pick -n base..branch`; on conflict abort
 #   unland   <slug> <id>  undo an uncommitted land: unstage and restore changed files, delete added ones
-#   cleanup  <slug>       remove worktrees/branches of landed (or empty) units whose worktree has no
-#                         uncommitted or untracked files; keep and list the rest
+#   cleanup  <slug> [--ignored-ok]
+#                         remove worktrees/branches of landed (or empty) units whose worktree has no
+#                         uncommitted, untracked, or ignored files; keep and list the rest. Ignored
+#                         files (build output, logs, .env) are listed, and removed only with
+#                         --ignored-ok, after checking they are this task's own output
 # Exit 0 ok, 1 refused or found a problem (details on stdout), 2 usage.
 set -u
 cmd=${1:-}; slug=${2:-}; uid=${3:-}
@@ -150,10 +153,14 @@ cleanup)
         br=$(col "$id" branch); st=$(col "$id" state); bs=$(col "$id" base)
         [ -n "$br" ] && [ "$br" != - ] || continue
         wt=$(printf '%s\n' "$wl" | awk -v b="refs/heads/$br" '/^worktree /{w=substr($0,10)} $0=="branch "b{print w; exit}')
-        left=""
-        [ -z "$wt" ] || left=$(git -C "$wt" status --porcelain --untracked-files=all)
+        left=""; ign=""
+        if [ -n "$wt" ]; then
+            left=$(git -C "$wt" status --porcelain --untracked-files=all)
+            [ "$uid" = --ignored-ok ] || ign=$(git -C "$wt" status --porcelain --ignored | grep '^!!' || true)
+        fi
         commits=0; git rev-parse -q --verify "$br^{commit}" >/dev/null && [ -n "$bs" ] && commits=$(git rev-list --count "$bs..$br" 2>/dev/null || echo 0)
         if [ -n "$left" ]; then echo "KEEP $id $br: uncommitted or untracked files in $wt:"; echo "$left"; bad=1; continue; fi
+        if [ -n "$ign" ]; then echo "KEEP $id $br: ignored files in $wt (rerun with --ignored-ok once they are this task's own output):"; echo "$ign"; bad=1; continue; fi
         if [ "$st" != landed ] && [ "$commits" != 0 ]; then echo "KEEP $id $br: $commits unlanded commit(s)"; bad=1; continue; fi
         [ -z "$wt" ] || git worktree remove --force "$wt"
         git branch -D -q "$br" 2>/dev/null
