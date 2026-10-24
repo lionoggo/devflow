@@ -114,6 +114,31 @@ git worktree remove --force "$wt3"; git branch -D -q dflow-unit/demo-w3
 out=$("$ps" worktree demo w3); [ $? = 0 ] && [ "$(git -C "$wt3" rev-parse HEAD)" = "$head" ] && ok || bad "sent-back unit not recreated at the new base: $out"
 expect 0 "sent-back worktree at the new base is reused" "$ps" worktree demo w3
 
+# land by sha: the branch moved on after the sha was verified; only base..<sha> is checked and landed
+head=$(git rev-parse HEAD)
+git worktree add -q -b ws "$t/ws" "$head"
+( cd "$t/ws"; echo S1 > app/s.py; git add -A; git commit -qm s1 ); s1=$(git -C "$t/ws" rev-parse HEAD)
+( cd "$t/ws"; echo S2 > app/s2.py; git add -A; git commit -qm s2 )
+printf 's\t-\tapp/s.py\tdispatched\t%s\t-\tws\t-\t0\t-\n' "$head" >> .dflow/demo.units.tsv
+expect 1 "scope of the whole branch sees the unverified commit" "$ps" scope demo s
+out=$("$ps" scope demo s "$s1"); [ $? = 0 ] && echo "$out" | grep -q "^note: ws is at .* past $s1" && ok || bad "scope at the verified sha: $out"
+out=$("$ps" land demo s "${s1:0:12}"); rc=$?
+[ $rc = 0 ] && echo "$out" | grep -q "^note:" && [ "$(cat app/s.py)" = S1 ] && [ ! -e app/s2.py ] && ok || bad "land by sha: $rc $out"
+expect 0 "unland s" "$ps" unland demo s
+notonbr=$(git commit-tree -p "$head" -m stray "$(git write-tree)")
+out=$("$ps" land demo s "$notonbr"); [ $? = 1 ] && echo "$out" | grep -q "is not on branch ws" && [ -z "$(git status --porcelain)" ] && ok || bad "sha off the branch: $out"
+expect 1 "unknown sha" "$ps" land demo s nosuchsha
+out=$("$ps" land demo s "$(git -C "$t/ws" rev-parse HEAD)"); echo "$out" | grep -q "^note:" && bad "note printed at the branch head: $out" || ok
+[ -f app/s2.py ] && ok || bad "land at the branch head did not land both commits"
+"$ps" unland demo s >/dev/null
+# the widened 多线 table (lines.sh init) is read by header name
+"$here/lines.sh" init demo >/dev/null
+expect 0 "scope on the widened table" "$ps" scope demo s "$s1"
+# orphan scan reads the branch column by name, wherever it sits
+git worktree add -q -b dflow-unit/re-x .dflow/worktrees/re-x "$head"; ( cd .dflow/worktrees/re-x; echo X > app/x.py; git add -A; git commit -qm x )
+printf 'branch\tid\tpaths\tstate\tbase\ndflow-unit/re-x\tx\tapp/x.py\tdispatched\t%s\n' "$head" > .dflow/re.units.tsv
+out=$("$ps" cleanup re); echo "$out" | grep -q "KEEP x" && ! echo "$out" | grep -q "ORPHAN .*re-x" && ok || bad "orphan scan by header name: $out"
+
 expect 2 "usage" "$ps"
 expect 1 "bad slug" "$ps" overlap "../x"
 echo "parallel-test: $pass passed, $fail failed"

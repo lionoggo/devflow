@@ -54,6 +54,15 @@ DFLOW_SESSION_ID=s1 "$rs" release demo >/dev/null
 rp=(); for i in 1 2 3 4 5 6; do (DFLOW_SESSION_ID=c$i DFLOW_AGENT_PID=$cpid "$rs" claim demo >/dev/null 2>&1 && echo won >> "$t/race") & rp+=($!); done; wait "${rp[@]}"; touch "$t/race"
 kill "${pids[@]}" 2>/dev/null; pids=()
 [ "$(grep -c won "$t/race")" = 1 ] && ok || bad "concurrent claims: $(grep -c won "$t/race") won"
+# concurrent takeovers of one stale lease: exactly one wins, the lease names it, nothing is left behind
+sh -c 'exit 0' & dead=$!; wait "$dead"
+sleep 60 & pids+=($!); live=$!
+sed -i '' "s/^session: .*/session: gone/; s/^pid: .*/pid: $dead/" .dflow/demo.lock/lease
+: > "$t/take"; rp=()
+for i in 1 2 3 4 5 6 7 8; do (DFLOW_SESSION_ID=t$i DFLOW_AGENT_PID=$live "$rs" claim demo >/dev/null 2>&1 && echo "t$i" >> "$t/take") & rp+=($!); done; wait "${rp[@]}"
+[ "$(wc -l < "$t/take" | tr -d ' ')" = 1 ] && grep -qx "session: $(cat "$t/take")" .dflow/demo.lock/lease && ok || bad "concurrent takeovers: winners $(tr '\n' ' ' < "$t/take"), lease $(grep session .dflow/demo.lock/lease)"
+[ -z "$(ls -d .dflow/demo.lock.* 2>/dev/null)" ] && ok || bad "takeover left $(ls -d .dflow/demo.lock.*)"
+kill "$live" 2>/dev/null
 rm -rf .dflow/demo.lock; expect 0 "claim again" "$rs" claim demo
 
 # manifest change detected

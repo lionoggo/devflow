@@ -9,7 +9,9 @@
 # Usage: run-state.sh claim|check|caffeinate|release|scope <slug>
 #   claim       take the lease for this session; refused while another live agent process
 #               (claude or codex) holds it; taking over a stale lease stops the previous
-#               owner's caffeinate
+#               owner's caffeinate. The lock directory appears with its lease in one rename;
+#               takers of a stale lease queue on <slug>.lock.takeover, and the renamed lease must
+#               still be the one judged stale (else it is put back and the claim refused)
 # Session: the nearest claude or codex process above this shell is the host; its session id
 #   is $CLAUDE_CODE_SESSION_ID or $CODEX_THREAD_ID and its pid is the owner pid.
 #   DFLOW_SESSION_ID and DFLOW_AGENT_PID override both (tests).
@@ -54,9 +56,15 @@ is_agent() { # a live claude or codex process (DFLOW_OWNER_COMM names a stand-in
     case $(basename "$(ps -o comm= -p "$1" 2>/dev/null)") in claude|codex|"${DFLOW_OWNER_COMM:-claude}") return 0 ;; esac
     return 1
 }
-write_lease() {
+rename() { python3 -I -c 'import os, sys
+try: os.rename(sys.argv[1], sys.argv[2])
+except OSError: sys.exit(1)' "$1" "$2"; }
+install_lock() { # create $lock with this session's lease in one rename; fails when $lock exists
+    local tmp="$lock.new.$$"; rm -rf "$tmp"; mkdir "$tmp" || return 1
     { echo "session: $me"; echo "pid: $mypid"; echo "manifest_sha256: $(sha "$man")"
-      echo "claimed_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "caffeinate_pid: ${1:-}"; } > "$lease.tmp" && mv "$lease.tmp" "$lease"
+      echo "claimed_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "caffeinate_pid: "; } > "$tmp/lease"
+    rename "$tmp" "$lock" && return 0
+    rm -rf "$tmp"; return 1
 }
 need_manifest() {
     [ -f "$man" ] || die "missing manifest $man"
@@ -68,21 +76,33 @@ case $cmd in
 claim)
     need_manifest; [ -n "$me" ] || die "no session id: run inside Claude Code or Codex (CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID)"
     mkdir -p "$d"
-    if mkdir "$lock" 2>/dev/null; then write_lease; echo "ok claimed $slug"; exit 0; fi
-    if [ ! -s "$lease" ]; then # another claim is between mkdir and writing the lease
-        age=$(( $(date +%s) - $(stat -f %m "$lock" 2>/dev/null || stat -c %Y "$lock") ))
-        [ "$age" -gt 10 ] || die "another claim is in progress; retry"
+    if install_lock; then echo "ok claimed $slug"; exit 0; fi
+    age() { echo $(( $(date +%s) - $(stat -f %m "$1" 2>/dev/null || stat -c %Y "$1") )); }
+    if [ ! -s "$lease" ]; then # a lock without a lease (an older claim died between mkdir and writing it)
+        [ "$(age "$lock")" -gt 10 ] || die "another claim is in progress; retry"
     fi
+    snap=$(cat "$lease" 2>/dev/null)
     owner=$(field "$lease" session 2>/dev/null); opid=$(field "$lease" pid 2>/dev/null)
     if [ "$owner" = "$me" ]; then echo "ok already held by this session"; exit 0; fi
     if is_agent "$opid"; then die "held by session $owner (agent pid $opid is alive); close it first"; fi
-    ocp=$(field "$lease" caffeinate_pid 2>/dev/null) # the dead owner's caffeinate would run to the deadline
+    # Stale lease. One taker at a time; then rename, and check the renamed lease is still the stale one.
+    tk="$lock.takeover"
+    if ! mkdir "$tk" 2>/dev/null; then
+        [ "$(age "$tk")" -gt 10 ] && rename "$tk" "$tk.dead.$$" && rm -rf "$tk.dead.$$"
+        mkdir "$tk" 2>/dev/null || die "another takeover of the stale lease is in progress; retry"
+    fi
+    trap 'rmdir "$tk" 2>/dev/null' EXIT
+    [ "$(cat "$lease" 2>/dev/null)" = "$snap" ] || die "lost the race for a stale lease (it changed); retry"
+    rename "$lock" "$lock.stale.$$" || die "lost the race for a stale lease; retry"
+    if [ "$(cat "$lock.stale.$$/lease" 2>/dev/null)" != "$snap" ]; then
+        rename "$lock.stale.$$" "$lock" || echo "FAIL could not put the lease back (left at $lock.stale.$$)"
+        die "lost the race for a stale lease (another session took it); put back"
+    fi
+    ocp=$(field "$lock.stale.$$/lease" caffeinate_pid 2>/dev/null) # the dead owner's caffeinate would run to the deadline
     if [ -n "$ocp" ] && ps -o comm= -p "$ocp" 2>/dev/null | grep -q caffeinate; then kill "$ocp" && echo "ok stopped the previous owner's caffeinate $ocp"; fi
-    # Stale lease: rename is atomic, so only one taker wins.
-    mv "$lock" "$lock.stale.$$" 2>/dev/null || die "lost the race for a stale lease; retry"
     rm -rf "$lock.stale.$$"
-    mkdir "$lock" 2>/dev/null || die "lost the race for a stale lease; retry"
-    write_lease; echo "ok took over stale lease from session ${owner:-?}"; exit 0 ;;
+    install_lock || die "lost the race for a stale lease; retry"
+    echo "ok took over stale lease from session ${owner:-?}"; exit 0 ;;
 check)
     need_manifest; [ -f "$lease" ] || die "no lease; run claim"
     [ "$(field "$lease" session)" = "$me" ] && echo "ok lease" || { echo "FAIL lease held by session $(field "$lease" session), not this one"; exit 1; }

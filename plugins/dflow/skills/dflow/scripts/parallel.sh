@@ -2,18 +2,24 @@
 # Mechanical steps of dflow parallel implementation (references/parallel.md).
 # Unit table: <repo>/.dflow/<slug>.units.tsv, tab-separated, header
 #   id deps paths state base agent branch dispatched_at tries landed
+# (多线 appends carrier model attempt brief report progress_at; columns are read by header name).
 # paths: space-separated globs the unit may write ("*" crosses "/").
 # Only the coordinating session writes the table; this script only reads it.
 #
-# Usage: parallel.sh <command> <slug> [id]
+# Usage: parallel.sh <command> <slug> [id] [sha]
 #   prepare  <slug>       exclude .claude/worktrees/ and .dflow/; require a clean tree; create the table
 #   overlap  <slug>       unit paths pairwise disjoint, inside the manifest's allow, outside protect
 #   worktree <slug> <id>  for a host whose subagents have no worktree isolation (Codex): create
 #                         .dflow/worktrees/<slug>-<id> on branch dflow-unit/<slug>-<id> at the
 #                         unit's base; prints the path and branch for the brief and the table.
 #                         A sent-back unit (tries > 0) whose worktree is not at the new base is refused
-#   scope    <slug> <id>  base is an ancestor of the unit branch; every changed file is in the unit's paths
-#   land     <slug> <id>  clean tree + ancestor check, then `cherry-pick -n base..branch`; on conflict abort
+#   scope    <slug> <id> [sha]
+#                         base is an ancestor of the unit branch; every changed file is in the unit's paths
+#   land     <slug> <id> [sha]
+#                         clean tree + ancestor check, then `cherry-pick -n base..branch`; on conflict abort.
+#                         With <sha> (scope too): it must be on the unit branch (an ancestor of it, or its
+#                         head), and base..<sha> is checked and landed; a note says when the branch has moved
+#                         past <sha>, whose later commits are not landed
 #   unland   <slug> <id>  undo an uncommitted land: unstage and restore changed files, delete added ones
 #   cleanup  <slug> [--ignored-ok]
 #                         remove worktrees/branches of landed (or empty) units whose worktree has no
@@ -22,7 +28,7 @@
 #                         --ignored-ok, after checking they are this task's own output
 # Exit 0 ok, 1 refused or found a problem (details on stdout), 2 usage.
 set -u
-cmd=${1:-}; slug=${2:-}; uid=${3:-}
+cmd=${1:-}; slug=${2:-}; uid=${3:-}; want=${4:-}
 die() { echo "FAIL $*"; exit 1; }
 usage() { sed -n '2,/^set -u/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
 [ -n "$cmd" ] && [ -n "$slug" ] || usage
@@ -36,7 +42,7 @@ col() { # col <id> <column>
     awk -F'\t' -v id="$1" -v c="$2" 'NR == 1 { for (i = 1; i <= NF; i++) h[$i] = i; next }
         $h["id"] == id { print $h[c]; exit }' "$table"
 }
-ids() { awk -F'\t' 'NR > 1 && $1 != "" { print $1 }' "$table"; }
+ids() { awk -F'\t' 'NR == 1 { for (i = 1; i <= NF; i++) h[$i] = i; next } $h["id"] != "" { print $h["id"] }' "$table"; }
 field() { awk -v k="$2" 'NF == 0 && seen { exit } /^[a-z0-9_]+: / { seen = 1; if (index($0, k ": ") == 1) { print substr($0, length(k) + 3); exit } }' "$1" 2>/dev/null; }
 match_any() { # match_any <string> <glob...>
     local s=$1 g; shift
@@ -53,6 +59,14 @@ need_unit() {
     [ -n "$branch" ] && [ "$branch" != - ] || die "unit $uid has no branch"
     git rev-parse -q --verify "$branch^{commit}" >/dev/null || die "branch $branch not found"
     git merge-base --is-ancestor "$base" "$branch" || die "base $base is not an ancestor of $branch"
+    tip=$branch
+    if [ -n "$want" ]; then
+        tip=$(git rev-parse -q --verify "$want^{commit}") || die "commit $want not found"
+        git merge-base --is-ancestor "$tip" "$branch" || die "$want is not on branch $branch"
+        git merge-base --is-ancestor "$base" "$tip" || die "base $base is not an ancestor of $want"
+        head=$(git rev-parse "$branch^{commit}")
+        [ "$head" = "$tip" ] || echo "note: $branch is at $head, past $tip; using $tip only"
+    fi
 }
 
 case $cmd in
@@ -102,12 +116,12 @@ scope)
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         match_any "$f" $paths || { echo "OUTSIDE $f"; bad=1; }
-    done <<< "$(git diff --name-only "$base" "$branch")"
+    done <<< "$(git diff --name-only "$base" "$tip")"
     [ $bad = 0 ] && echo "ok scope $uid"; exit $bad ;;
 land)
     need_unit
     d=$(dirty); [ -z "$d" ] || { echo "FAIL working tree not clean; refusing to land:"; echo "$d"; exit 1; }
-    if err=$(git cherry-pick -n "$base..$branch" 2>&1 >/dev/null); then
+    if err=$(git cherry-pick -n "$base..$tip" 2>&1 >/dev/null); then
         echo "ok landed $uid into the working tree; changed:"; git diff --cached --name-status
     else
         conflicts=$(git diff --name-only --diff-filter=U)
@@ -169,7 +183,7 @@ cleanup)
         echo "ok removed $id ($br${wt:+, $wt})"
     done
     git worktree prune
-    reg=$(awk -F'\t' 'NR > 1 { print $7 }' "$table")
+    reg=$(awk -F'\t' 'NR == 1 { for (i = 1; i <= NF; i++) if ($i == "branch") c = i; next } c { print $c }' "$table")
     printf '%s\n' "$(git worktree list --porcelain)" | awk '/^worktree /{w=substr($0,10)} /^branch /{print w"\t"substr($0,19)}' |
     while IFS=$'\t' read -r w b; do
         case $w in */.claude/worktrees/*|*/.dflow/worktrees/*) ;; *) continue ;; esac
