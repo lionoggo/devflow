@@ -1,6 +1,6 @@
 ---
 name: dflow
-description: "The single entry for development work: routes a goal to a playbook (teach, research, debug, plan, review, build, verify, unattended, handoff, status, retro, report, ship, tune, impact, prototype, polish), works without blocking on reversible steps, and closes with evidence. Only when the user names dflow (/dflow:dflow or $dflow:dflow; Claude Code also takes /dflow)."
+description: "The single entry for development work: routes a goal to a playbook (teach, research, debug, plan, review, build, verify, lines, unattended, handoff, status, retro, report, ship, tune, impact, prototype, polish), works without blocking on reversible steps, and closes with evidence. Only when the user names dflow (/dflow:dflow or $dflow:dflow; Claude Code also takes /dflow)."
 disable-model-invocation: true
 ---
 
@@ -38,6 +38,13 @@ to this file's directory.
 
 Do not load any `devflow-*` skill inside a dflow session.
 
+**Line mode.** A request whose first line is `dflow 线 <slug>/<id>/<attempt>`
+is a brief from a 多线 or 并行 coordinator. Skip steps 1–3: run only that
+brief, without matching a playbook, handing off, starting 无人值守, or
+switching branches beyond the brief's own 准备 step. At the time box, deliver
+partial results. End by writing the receipt the brief names
+(`playbooks/lines.md` **Receipts and done**).
+
 **Host.** Every playbook runs in Claude Code and in Codex. The playbooks
 name Claude Code's tools; in Codex, use the matching row of
 `references/hosts.md` (subagents, worktree workers, waits, the 无人值守
@@ -55,6 +62,7 @@ Codex session that needs any of them.
 | 评审 | review | Review a plan or code, compare two approaches | `playbooks/review.md` |
 | 实施 | build | Build from an approved plan, or "你来改"; "并行" runs its independent units in parallel | `playbooks/build.md` |
 | 验收 | verify | Verify, 验收, real end-to-end checks | `playbooks/verify.md` |
+| 多线 | lines | "多线", "开几条线", "分给几个 agent 跑": several lines of work, each in its own worktree, possibly on other models or in visible windows, that this session keeps owning (collects, verifies, lands) | `playbooks/lines.md` |
 | 无人值守 | unattended | "我要离开", "去睡了", "跑到…为止", "别停", "无人值守"; "继续无人值守 <slug>"; "暂停" during a run | `playbooks/unattended.md` |
 | 交接 | handoff | A prompt for a new session or another agent | `playbooks/handoff.md` |
 | 进展 | status | Where things are, what is next, why it stopped | `playbooks/status.md` |
@@ -72,7 +80,13 @@ point at, 调研 when facts must be found and located with evidence; unsure
 means 讲解 (lighter), and 讲解 hands over to 调研 once something needs
 checking; variants to look at is 原型; an executable plan
 is 方案; how a logged run's decisions hold up is 复盘, where things stand now
-is 进展. No match: treat it as 方案 and frame the goal and its done check
+is 进展. Split delegated work by who stays responsible, not by model or
+tool: 并行 is units of one plan inside 实施, on same-host subagents; 多线 is
+lines this session registers, collects, and lands, across models or
+sessions; 交接 hands the work over once and this session stops; 无人值守 is
+the loop that keeps running and pauses, and a long 多线 run uses it rather
+than a second loop. "让 Codex 审一下方案" is still 评审 (another model is
+not 多线); "交给新会话继续做" is still 交接. No match: treat it as 方案 and frame the goal and its done check
 first. "记决策日志" is not a playbook: it adds a decision log
 (`references/decision-log.md`) to whichever playbook the rest of the request
 matches, or to the current one. Work that, as you start it, has two or more
@@ -165,8 +179,9 @@ path in the reply.
 **Ask first:**
 - push, open a PR, merge, rebase, amend, reset, force, or rewrite history;
 - create, switch, or delete a worktree or branch the user did not name
-  (exception: after the user says "并行", the worktrees and branches
-  `scripts/parallel.sh` and the worktree subagents create and remove);
+  (exception: after the user says "并行" or "多线", the worktrees and
+  branches `scripts/parallel.sh`, the worktree subagents, and 多线's lines
+  create and remove);
 - discard or delete work you did not create in this task, including untracked
   files and existing files a command you run would overwrite (files this
   task wrote excepted; earlier runs' outputs count): list exactly what would

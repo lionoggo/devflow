@@ -17,6 +17,8 @@ devflow-impl `handoff.md`. Principles: 以现状为准, 对齐目标.
    the target. Never resend until non-delivery is confirmed.
 
 Leave out transcripts, raw logs, credentials, and unrelated file contents.
+When this session should keep owning the result (collecting, verifying,
+landing), it is 多线 (`playbooks/lines.md`), not a handoff.
 
 ```text
 你负责 <实现已批准的范围 | 排查 <问题> | 调研 | 设计 <主题>>，仓库 <绝对路径>。

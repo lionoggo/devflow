@@ -6,6 +6,11 @@ full checks.** A local take on pstack `autopilot-stack` with the throughput
 checkpoint from `feature`. Principles: 小步可验证, 真实证据, 先减后加. `$S` is
 this skill's directory.
 
+并行 is the inside of one 实施: units of one plan, on same-host subagents.
+多线 (`playbooks/lines.md`) is the session-owned program across models,
+sessions, and windows; it reuses this file's unit table (with six more
+columns, which this file ignores) and its landing steps.
+
 ## Throughput check (always, before writing code in 实施 or at an unattended frame)
 
 Write four items:
@@ -52,13 +57,16 @@ order. In Codex the steps are the same with the tools in
 3. **On each completion** (one at a time; any wake-up in an unattended run is
    a Round, so `run-state.sh check` comes first; Codex: `wait_agent` on the
    running ids returns them):
-   1. Read the report; record `agent` and `branch`. Append its decision rows
+   1. Read the report; record `agent` and `branch`, and fix the HEAD SHA it
+      reports as the unit's SHA for the next steps. Append its decision rows
       to the run's decision log with phase = unit id and `agent-<id>` in the
       evidence.
-   2. `parallel.sh scope <slug> <id>`: ancestor check and path check. A
-      failure sends the unit back.
-   3. `parallel.sh land <slug> <id>`: the unit's changes, uncommitted, in the
-      main tree. A conflict aborts cleanly and sends the unit back.
+   2. `parallel.sh scope <slug> <id> <sha>`: ancestor check and path check
+      on that SHA. A failure sends the unit back.
+   3. `parallel.sh land <slug> <id> <sha>`: `base..<sha>`, uncommitted, in
+      the main tree, even if the branch has moved on since the report (it
+      prints a note then; later commits are not landed). A conflict aborts
+      cleanly and sends the unit back.
    4. In the main tree run the unit's checks, every finished stage's
       conditions, and the protected checks. Pass: `git add` only the unit's
       paths, commit once, set `landed <sha>`, log it. Fail:

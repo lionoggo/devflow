@@ -4,7 +4,7 @@
 
 | Skill | 用途 |
 |---|---|
-| dflow | 唯一入口：按目标选流程（讲解、调研、排查、方案、评审、实施、验收、无人值守、交接、进展、复盘、周报、提交与发布、调优、影响面、原型、润色），可撤销的步骤不停下等人，收尾给证据。只在点名时启用 |
+| dflow | 唯一入口：按目标选流程（讲解、调研、排查、方案、评审、实施、验收、多线、无人值守、交接、进展、复盘、周报、提交与发布、调优、影响面、原型、润色），可撤销的步骤不停下等人，收尾给证据。只在点名时启用 |
 | retro | 复盘的直达入口 |
 | report | 周报：按 Git 记录汇总个人工作进展，也是 dflow 周报流程的实现 |
 
@@ -12,10 +12,12 @@
 
 ## 调用
 
-| 宿主 | 主入口 | 复盘直达 | 周报直达 |
-|---|---|---|---|
-| Claude Code | `/dflow:dflow`（没有别的 `/dflow` 时也可直接 `/dflow`） | `/dflow:retro` | `/dflow:report` |
-| Codex | `$dflow:dflow` | `$dflow:retro` | `$dflow:report` |
+| 宿主 | 主入口 | 复盘直达 | 周报直达 | 多线 |
+|---|---|---|---|---|
+| Claude Code | `/dflow:dflow`（没有别的 `/dflow` 时也可直接 `/dflow`） | `/dflow:retro` | `/dflow:report` | `/dflow:dflow 多线 <目标>` |
+| Codex | `$dflow:dflow` | `$dflow:retro` | `$dflow:report` | `$dflow:dflow 多线 <目标>` |
+
+多线把工作分成几条线，各自在独立 worktree 里跑（子 Agent、后台的另一个模型，或可见窗口），由当前会话收回执、验收、按提交号落地，账本在 `.dflow/<slug>/`。说“多线”即同意它创建和删除这些 worktree。
 
 点名直达：入口后的第一个词恰好是流程的中文名或 id（见 `plugins/dflow/skills/dflow/SKILL.md` 流程表），就直接用那个流程，例如 `/dflow retro alpha`、`/dflow 复盘 全部`、`/dflow debug 登录页白屏`。只看第一个词；不是流程名时照常匹配。
 

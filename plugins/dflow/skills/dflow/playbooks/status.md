@@ -6,7 +6,10 @@ on them. Read-only.** From pstack `ketchup`. Principles: 以现状为准, 真实
 1. Collect, without changing anything: this conversation since the user's
    last message, subagent and background results, `git log` and
    `git status`, todo state, and any run log (`.dflow/*.tsv`). Re-check each
-   number you will show against its source.
+   number you will show against its source. A 多线 run: run
+   `scripts/lines.sh status <slug>` and start from `.dflow/<slug>/status.md`,
+   then check it live (each line's branch in `git log`, `agent.sh wait` for
+   headless lines, receipts on disk); the board is a cache, not the truth.
 2. An item for the user is a decision or step only they can take: a product
    choice, an approval, an outside or irreversible action, access you lack.
    Work you can still do yourself is not one, even if you would like a go

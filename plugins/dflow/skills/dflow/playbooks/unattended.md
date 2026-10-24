@@ -46,9 +46,9 @@ every fact first; never ask what you can run.
    commit when that file is in `allow`, otherwise into step 6.
 5. **Will not do**: push, merge, rebase, reset, stash, clean, cherry-pick,
    amend; switch or delete branches, tags, worktrees; edit protected paths;
-   write to outside systems. The one exception: in a parallel run,
+   write to outside systems. The one exception: in a parallel or 多线 run,
    `parallel.sh land` and `cleanup` may cherry-pick, remove worktrees, and
-   delete the branches it created. The run sends two kinds of device notifications
+   delete the branches it created, and 多线 creates its lines' worktrees. The run sends two kinds of device notifications
    (see **Notify**); "开始" approves that.
 6. **Known open questions**: product or preference calls visible now, each
    with its default, so the user can change it here.
@@ -102,6 +102,16 @@ worker's completion notification. In a parallel run, a Round handles arrived
 completions per `references/parallel.md`; while workers are still running, a
 `/loop` wake dispatches nothing new. In Codex, workers do not wake you: a
 Round with workers running ends in `wait_agent` on them.
+
+A run framed with 多线 as its way of working (`playbooks/lines.md`) runs
+`$S/scripts/lines.sh init <slug>` after step 4 on "开始", and uses this same
+loop, never a second one. Its Round keeps step 1 (`run-state.sh check`),
+then replaces steps 3–5 with one collection: read the receipts
+(`agent.sh wait` for headless lines, `lines.sh receipt` for the rest),
+update `progress_at` and spot stuck lines, `lines.sh lock show` each
+resource in `standing.md`, verify and land what is ready by SHA, refill the
+window, and end with `lines.sh status <slug>`. A landing commit is the
+round's progress; a round with none logs `round` with what it waits on.
 
 1. `$S/scripts/run-state.sh check <slug>`:
    - exit 0: go on;
