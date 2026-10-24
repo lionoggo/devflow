@@ -17,15 +17,19 @@
 #                         base is an ancestor of the unit branch; every changed file is in the unit's paths
 #   land     <slug> <id> [sha]
 #                         clean tree + ancestor check, then `cherry-pick -n base..branch`; on conflict abort.
-#                         With <sha> (scope too): it must be on the unit branch (an ancestor of it, or its
-#                         head), and base..<sha> is checked and landed; a note says when the branch has moved
-#                         past <sha>, whose later commits are not landed
+#                         With <sha> (scope too): it must name one commit, and the unit branch's head must be
+#                         exactly that commit; a branch that moved after <sha> was verified is refused.
+#                         A land records the source commit in .dflow/<slug>.landed (id, sha; last row wins)
 #   unland   <slug> <id>  undo an uncommitted land: unstage and restore changed files, delete added ones
 #   cleanup  <slug> [--ignored-ok]
-#                         remove worktrees/branches of landed (or empty) units whose worktree has no
-#                         uncommitted, untracked, or ignored files; keep and list the rest. Ignored
-#                         files (build output, logs, .env) are listed, and removed only with
-#                         --ignored-ok, after checking they are this task's own output
+#                         remove worktrees/branches only of units in state landed, done, dead, stopped
+#                         or planned whose worktree has no uncommitted, untracked, or ignored files;
+#                         keep and list the rest: any other state (dispatched, stop-unconfirmed, ...),
+#                         a non-landed unit with commits past base, and a landed unit whose branch has
+#                         commits past the source commit that landed (from .dflow/<slug>.landed, else a
+#                         `landed` value on the branch; neither known: kept). Ignored files (build
+#                         output, logs, .env) are listed, and removed only with --ignored-ok, after
+#                         checking they are this task's own output
 # Exit 0 ok, 1 refused or found a problem (details on stdout), 2 usage.
 set -u
 cmd=${1:-}; slug=${2:-}; uid=${3:-}; want=${4:-}
@@ -35,7 +39,7 @@ usage() { sed -n '2,/^set -u/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2; exit 2; }
 printf '%s' "$slug" | grep -Eq '^[a-z0-9][a-z0-9-]{0,62}$' || die "bad slug: $slug"
 root=$(git rev-parse --show-toplevel 2>/dev/null) || die "not in a git repository"
 cd "$root" || exit 1
-table=".dflow/$slug.units.tsv"; man=".dflow/$slug.md"
+table=".dflow/$slug.units.tsv"; man=".dflow/$slug.md"; landrec=".dflow/$slug.landed"
 set -f   # globs in the table are patterns, never expanded against the disk
 
 col() { # col <id> <column>
@@ -61,11 +65,11 @@ need_unit() {
     git merge-base --is-ancestor "$base" "$branch" || die "base $base is not an ancestor of $branch"
     tip=$branch
     if [ -n "$want" ]; then
-        tip=$(git rev-parse -q --verify "$want^{commit}") || die "commit $want not found"
-        git merge-base --is-ancestor "$tip" "$branch" || die "$want is not on branch $branch"
-        git merge-base --is-ancestor "$base" "$tip" || die "base $base is not an ancestor of $want"
+        printf '%s' "$want" | grep -Eq '^[0-9a-f]{4,40}$' || die "$want is not a commit sha"
+        tip=$(git rev-parse -q --verify "$want^{commit}") || die "commit $want not found (or not unique)"
+        case $tip in "$want"*) ;; *) die "$want is not a commit sha" ;; esac
         head=$(git rev-parse "$branch^{commit}")
-        [ "$head" = "$tip" ] || echo "note: $branch is at $head, past $tip; using $tip only"
+        [ "$head" = "$tip" ] || die "branch $branch is at $head, not $tip: it changed after $want was verified; its head is a new delivery that needs its own pass"
     fi
 }
 
@@ -122,6 +126,7 @@ land)
     need_unit
     d=$(dirty); [ -z "$d" ] || { echo "FAIL working tree not clean; refusing to land:"; echo "$d"; exit 1; }
     if err=$(git cherry-pick -n "$base..$tip" 2>&1 >/dev/null); then
+        printf '%s\t%s\n' "$uid" "$(git rev-parse "$tip^{commit}")" >> "$landrec"
         echo "ok landed $uid into the working tree; changed:"; git diff --cached --name-status
     else
         conflicts=$(git diff --name-only --diff-filter=U)
@@ -174,9 +179,23 @@ cleanup)
             ign=$(git -C "$wt" status --porcelain --ignored | grep '^!!' || true)
         fi
         commits=0; git rev-parse -q --verify "$br^{commit}" >/dev/null && [ -n "$bs" ] && commits=$(git rev-list --count "$bs..$br" 2>/dev/null || echo 0)
+        case $st in
+        landed|done|dead|stopped|planned) ;;
+        *) echo "KEEP $id $br: state ${st:-?} (only landed, done, dead, stopped or planned units are removed)"; bad=1; continue ;;
+        esac
         if [ -n "$left" ]; then echo "KEEP $id $br: uncommitted or untracked files in $wt:"; echo "$left"; bad=1; continue; fi
         if [ -n "$ign" ] && [ "$uid" != --ignored-ok ]; then echo "KEEP $id $br: ignored files in $wt (not removed; see cleanup in references/parallel.md):"; echo "$ign"; bad=1; continue; fi
         if [ "$st" != landed ] && [ "$commits" != 0 ]; then echo "KEEP $id $br: $commits unlanded commit(s)"; bad=1; continue; fi
+        if [ "$st" = landed ] && git rev-parse -q --verify "$br^{commit}" >/dev/null; then
+            src=$(awk -F'\t' -v id="$id" '$1 == id { s = $2 } END { print s }' "$landrec" 2>/dev/null)
+            if [ -z "$src" ]; then
+                lv=$(col "$id" landed); lv=$(git rev-parse -q --verify "$lv^{commit}" 2>/dev/null) &&
+                    git merge-base --is-ancestor "$lv" "$br" && src=$lv
+            fi
+            if [ -z "$src" ]; then echo "KEEP $id $br: landed, but no record of which commit landed (parallel.sh land writes $landrec)"; bad=1; continue; fi
+            past=$(git rev-list --count "$src..$br" 2>/dev/null || echo "?")
+            if [ "$past" != 0 ]; then echo "KEEP $id $br: $past commit(s) past the landed $src"; bad=1; continue; fi
+        fi
         [ -z "$ign" ] || { echo "DELETING ignored files in $wt:"; echo "$ign"; }
         [ -z "$wt" ] || git worktree remove --force "$wt"
         git branch -D -q "$br" 2>/dev/null

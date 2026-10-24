@@ -63,6 +63,18 @@ for i in 1 2 3 4 5 6 7 8; do (DFLOW_SESSION_ID=t$i DFLOW_AGENT_PID=$live "$rs" c
 [ "$(wc -l < "$t/take" | tr -d ' ')" = 1 ] && grep -qx "session: $(cat "$t/take")" .dflow/demo.lock/lease && ok || bad "concurrent takeovers: winners $(tr '\n' ' ' < "$t/take"), lease $(grep session .dflow/demo.lock/lease)"
 [ -z "$(ls -d .dflow/demo.lock.* 2>/dev/null)" ] && ok || bad "takeover left $(ls -d .dflow/demo.lock.*)"
 kill "$live" 2>/dev/null
+# the holder pid is alive but ps cannot tell what it is (a sandbox refusing ps): not taken over
+mkdir -p "$t/nops"; printf '#!/bin/sh\necho "ps: operation not permitted" >&2; exit 1\n' > "$t/nops/ps"; chmod +x "$t/nops/ps"
+sleep 60 & pids+=($!); live=$!
+sed -i '' "s/^session: .*/session: gone/; s/^pid: .*/pid: $live/" .dflow/demo.lock/lease; cp .dflow/demo.lock/lease "$t/lease"
+out=$(PATH="$t/nops:$PATH" DFLOW_OWNER_COMM=none DFLOW_SESSION_ID=t9 "$rs" claim demo 2>&1); rc=$?
+[ $rc = 1 ] && cmp -s .dflow/demo.lock/lease "$t/lease" && ok || bad "no ps: live holder taken over: $rc $out"
+kill "$live" 2>/dev/null
+# a claim whose own pid is unknown or not running is refused: its lease would look stale at once
+rm -rf .dflow/demo.lock
+DFLOW_AGENT_PID= expect 1 "claim without an owner pid" "$rs" claim demo
+[ ! -d .dflow/demo.lock ] && ok || bad "lease written without an owner pid"
+DFLOW_AGENT_PID=$dead expect 1 "claim with a dead owner pid" "$rs" claim demo
 rm -rf .dflow/demo.lock; expect 0 "claim again" "$rs" claim demo
 
 # manifest change detected

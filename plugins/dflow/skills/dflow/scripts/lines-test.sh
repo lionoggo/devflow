@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Tests for lines.sh against a throwaway repo: init on an old table, line set, receipts, the ledger
-# (pass only on the same sha), status, and machine-wide resource locks (mutual exclusion across
-# working directories, one winner when a stale lock is taken over concurrently).
+# (pass only on the same full sha; a verifier's verdict outranks a self pass; self needs the brief's
+# 单命令验证), status (and the read-only --print), and machine-wide resource locks (mutual exclusion
+# across working directories, release only with the holder's token, one winner when a stale lock is
+# taken over concurrently).
 set -u
 here=$(cd "$(dirname "$0")" && pwd); ln="$here/lines.sh"; pass=0; fail=0
 ok() { pass=$((pass+1)); }; bad() { fail=$((fail+1)); echo "FAIL $*"; }
@@ -48,6 +50,9 @@ expect 1 "malformed receipt" "$ln" receipt demo a 3
 expect 1 "missing receipt" "$ln" receipt demo a 4
 echo "RECEIPT b 1 done docs/review.md" > .dflow/demo/reports/b-1.md
 out=$("$ln" receipt demo b 1); [ "$out" = "done docs/review.md" ] && ok || bad "read-only receipt with a path: $out"
+# a report still being written (<report>.tmp) is not a receipt; only the final name counts
+echo "RECEIPT a 5 done $base" > .dflow/demo/reports/a-5.md.tmp
+expect 1 "a receipt still in .tmp" "$ln" receipt demo a 5
 
 # ledger: pass only on the same sha; review never counts; self only with single-command evidence;
 # a fix on a new sha needs its own pass; a later fail on a sha revokes its pass
@@ -69,18 +74,47 @@ echo fix3 >> a.txt; git commit -qam "a fix 3"; s3=$(git rev-parse HEAD); git res
 expect 2 "a newer sha after the pass needs its own" "$ln" ledger check demo a "$s3"
 echo "$out" | grep -q "pass recorded on" && ok || bad "other-sha pass not named: $out"
 expect 0 "self pass with single-command evidence" "$ln" ledger record demo a 3 "$s3" pass self worker "single-command: make check"
-expect 0 "single-command self pass counts" "$ln" ledger check demo a "$s3"
+expect 2 "single-command self pass without the brief's permission" "$ln" ledger check demo a "$s3"
+echo "$out" | grep -q "单命令验证" && ok || bad "brief permission not named: $out"
+printf 'dflow 线 demo/a/3\n验收：单命令验证 make check\n' > .dflow/demo/briefs/a-3.md
+expect 0 "single-command self pass counts when the brief says 单命令验证" "$ln" ledger check demo a "$s3"
 expect 0 "later fail" "$ln" ledger record demo a 3 "$s3" fail test codex "ci.log"
 expect 2 "a later fail revokes the pass" "$ln" ledger check demo a "$s3"
+# a verifier's fail is not undone by a self pass appended after it
+expect 0 "self pass after the fail" "$ln" ledger record demo a 3 "$s3" pass self worker "single-command: make check"
+expect 2 "self pass after a verifier's fail" "$ln" ledger check demo a "$s3"
+echo "$out" | grep -q "fail (test, codex)" && ok || bad "verifier's fail not named: $out"
+# the latest verifier row decides; a review pass is ignored (it can fail a sha, never pass it)
+expect 0 "behavior pass after the fail" "$ln" ledger record demo a 3 "$s3" pass behavior claude "repro3.log"
+expect 0 "the latest verifier pass decides" "$ln" ledger check demo a "$s3"
+expect 0 "review pass after it" "$ln" ledger record demo a 3 "$s3" pass review codex "r.out"
+expect 0 "a review pass neither counts nor overrides" "$ln" ledger check demo a "$s3"
+expect 0 "review fail after it" "$ln" ledger record demo a 3 "$s3" fail review codex "r2.out"
+expect 2 "a review fail overrides the behavior pass" "$ln" ledger check demo a "$s3"
+# shas: stored in full; a path, an unknown or an ambiguous prefix is refused in record and check
+[ "$(awk -F'\t' '$1 == "a" && $2 == 2 { print $3 }' .dflow/demo/ledger.tsv)" = "$s2" ] && ok || bad "short sha not stored in full: $(cat .dflow/demo/ledger.tsv)"
+export GIT_AUTHOR_DATE=2026-01-01T00:00:00Z GIT_COMMITTER_DATE=2026-01-01T00:00:00Z GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+e=$(git hash-object -t tree -w /dev/null); x3=$(git commit-tree "$e" -m n3); x48=$(git commit-tree "$e" -m n48)
+unset GIT_AUTHOR_DATE GIT_COMMITTER_DATE GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+[ "${x3:0:4}" = "${x48:0:4}" ] && [ "$x3" != "$x48" ] && ok || bad "test setup: $x3 and $x48 should share 4 hex digits"
+expect 1 "ambiguous prefix in record" "$ln" ledger record demo a 3 "${x3:0:4}" pass behavior claude x
+expect 1 "ambiguous prefix in check" "$ln" ledger check demo a "${x3:0:4}"
+expect 0 "a unique prefix of the same commit" "$ln" ledger record demo a 3 "${x3:0:6}" fail behavior claude x
+expect 1 "unknown sha" "$ln" ledger record demo a 3 abcdef0 pass behavior claude x
+expect 1 "unknown sha in check" "$ln" ledger check demo a abcdef0
+expect 1 "a branch name is not a sha" "$ln" ledger record demo a 3 wa pass behavior claude x
 expect 1 "bad result" "$ln" ledger record demo a 1 "$s1" ok test x y
 expect 1 "bad evidence type" "$ln" ledger record demo a 1 "$s1" pass vibes x y
-expect 0 "blocked receipt line recorded" "$ln" ledger record demo b 1 docs/review.md blocked review codex "b-1.md"
-expect 2 "blocked is not pass" "$ln" ledger check demo b docs/review.md
+expect 1 "a path is not a commit" "$ln" ledger record demo b 1 docs/review.md pass behavior codex "b-1.md"
+expect 0 "blocked recorded" "$ln" ledger record demo b 1 "$s1" blocked behavior codex "b-1.md"
+expect 2 "blocked is not pass" "$ln" ledger check demo b "$s1"
 
 # status: board from table, ledger and receipts; open gates from the decision log; changed lines
 "$here/log.sh" .dflow/demo.tsv gate "接口用 v1 还是 v2" "两者都可" "-" "默认 v1" >/dev/null
 "$here/log.sh" .dflow/demo.tsv gate "要不要删旧表" "影响迁移" "-" "默认保留" >/dev/null
 "$here/log.sh" .dflow/demo.tsv gate "要不要删旧表" "用户说保留" "-" closed >/dev/null
+"$here/log.sh" .dflow/demo.tsv decision "解析器先只做 v1" "a-2 报告" "-" ok >/dev/null
+"$here/log.sh" .dflow/demo.tsv round "第 1 轮" "-" "-" ok >/dev/null
 "$ln" line set demo a attempt=2 >/dev/null; echo "RECEIPT a 2 done $s2" > .dflow/demo/reports/a-2.md
 out=$("$ln" status demo); rc=$?
 [ $rc = 0 ] && [ "$(echo "$out" | wc -l | tr -d ' ')" = 3 ] && ok || bad "status summary: $rc $out"
@@ -89,9 +123,29 @@ echo "$out" | grep -qx 'changed: a b' && ok || bad "first status changed: $out"
 echo "$out" | grep -qx 'gates open: 1' && ok || bad "gates: $out"
 grep -q '接口用 v1 还是 v2' .dflow/demo/status.md && ! grep -q '要不要删旧表' .dflow/demo/status.md && ok || bad "gate list: $(cat .dflow/demo/status.md)"
 grep -q "^| a | dispatched | headless | codex | 2 | 2026-10-24T00:00:00Z | done $s2 | pass @$s2 |" .dflow/demo/status.md && ok || bad "row a: $(cat .dflow/demo/status.md)"
+grep -q '^- 解析器先只做 v1（a-2 报告；' .dflow/demo/status.md && ! grep -q '第 1 轮' .dflow/demo/status.md && ok || bad "decision rows: $(cat .dflow/demo/status.md)"
 out=$("$ln" status demo); echo "$out" | grep -qx 'changed: none' && ok || bad "second status changed: $out"
 "$ln" line set demo b state=blocked >/dev/null
 out=$("$ln" status demo); echo "$out" | grep -qx 'changed: b' && ok || bad "changed after edit: $out"
+# every shown field counts as a change: last progress, carrier, model
+"$ln" line set demo a progress_at=2026-10-24T01:00:00Z >/dev/null
+out=$("$ln" status demo); echo "$out" | grep -qx 'changed: a' && ok || bad "progress_at change not seen: $out"
+"$ln" line set demo b carrier=headless model=claude >/dev/null
+out=$("$ln" status demo); echo "$out" | grep -qx 'changed: b' && ok || bad "carrier/model change not seen: $out"
+# verifier lines (v-<id>) get their own table
+"$ln" line set demo v-a state=dispatched carrier=headless model=claude attempt=1 >/dev/null
+"$ln" status demo >/dev/null
+awk '/^## 验收线/ { f = 1 } f && /^\| v-a \|/ { found = 1 } END { exit !found }' .dflow/demo/status.md && [ "$(sed -n '/^## 验收线/q; /^| v-a |/p' .dflow/demo/status.md)" = "" ] && ok || bad "verifier table: $(cat .dflow/demo/status.md)"
+# --print: the same board on stdout; nothing written, no snapshot, no lock taken
+cp .dflow/demo/status.md "$t/st.md"; cp .dflow/demo/.status.snap "$t/st.snap"
+"$ln" line set demo b state=dispatched >/dev/null
+mkdir .dflow/demo/.lock   # a write lock held by someone else does not block a read
+ls -la .dflow/demo > "$t/ls1"
+out=$("$ln" status demo --print); rc=$?
+[ $rc = 0 ] && echo "$out" | grep -q '^| b | dispatched |' && echo "$out" | grep -q '^## 等你定' && ok || bad "status --print: $rc $out"
+cmp -s .dflow/demo/status.md "$t/st.md" && cmp -s .dflow/demo/.status.snap "$t/st.snap" && ls -la .dflow/demo | cmp -s - "$t/ls1" && ok || bad "status --print wrote something"
+rmdir .dflow/demo/.lock
+expect 2 "status with an unknown option" "$ln" status demo --write
 # a 10-column table without init still renders (missing columns as "-")
 printf 'id\tdeps\tpaths\tstate\tbase\tagent\tbranch\tdispatched_at\ttries\tlanded\nz\t-\tx\tplanned\t-\t-\t-\t-\t0\t-\n' > .dflow/old.units.tsv
 mkdir -p .dflow/old; printf 'id\tattempt\tsha\tresult\tevidence_type\tverifier\tevidence\tts\n' > .dflow/old/ledger.tsv
@@ -105,24 +159,36 @@ rp=(); for i in 1 2 3 4 5 6 7 8; do "$ln" ledger record demo c 1 "$base" pass te
 # resource locks: machine-wide, so two working directories contend for the same one
 mkdir -p "$t/wt1" "$t/wt2"
 sleep 60 & pids+=($!); p1=$!; sleep 60 & pids+=($!); p2=$!
-out=$(cd "$t/wt1" && "$ln" lock acquire gui demo/a/1 "$p1"); [ $? = 0 ] && ok || bad "acquire from wt1: $out"
-out=$(cd "$t/wt2" && "$ln" lock acquire gui demo/b/1 "$p2"); [ $? = 1 ] && echo "$out" | grep -q "held by demo/a/1" && ok || bad "second holder not refused: $out"
-out=$(cd "$t/wt1" && "$ln" lock acquire gui demo/a/1 "$p1"); [ $? = 0 ] && ok || bad "re-acquire by the holder: $out"
-out=$("$ln" lock show gui); echo "$out" | grep -qx "attempt: demo/a/1" && echo "$out" | grep -qx "pid: $p1" && echo "$out" | grep -q "^command: sleep 60" && echo "$out" | grep -qx "state: alive" && ok || bad "show: $out"
-expect 1 "release by another attempt" "$ln" lock release gui demo/b/1
-expect 0 "release by the holder" "$ln" lock release gui demo/a/1
+tok=$(cd "$t/wt1" && "$ln" lock acquire gui demo/a/1 "$p1" 2>/dev/null); [ $? = 0 ] && printf '%s' "$tok" | grep -Eqx '[0-9a-f]{32}' && ok || bad "acquire from wt1 printed no token: $tok"
+out=$(cd "$t/wt2" && "$ln" lock acquire gui demo/b/1 "$p2" 2>&1); [ $? = 1 ] && echo "$out" | grep -q "held by demo/a/1" && ok || bad "second holder not refused: $out"
+out=$(cd "$t/wt1" && "$ln" lock acquire gui demo/a/1 "$p1" 2>/dev/null); [ $? = 0 ] && [ "$out" = "$tok" ] && ok || bad "re-acquire by the holder: $out"
+out=$("$ln" lock show gui); echo "$out" | grep -qx "attempt: demo/a/1" && echo "$out" | grep -qx "pid: $p1" && echo "$out" | grep -q "^command: sleep 60" && echo "$out" | grep -qx "state: alive" && ! echo "$out" | grep -q "$tok" && ok || bad "show: $out"
+# the same attempt name from another repository (or its string as a token) does not release it
+expect 1 "release by attempt name" "$ln" lock release gui demo/a/1
+expect 1 "release with another token" "$ln" lock release gui 0123456789abcdef0123456789abcdef
+[ -d "$DFLOW_LOCK_DIR/gui" ] && ok || bad "lock gone after refused releases"
+# the standard brief line keeps the resource command's exit code and releases the lock
+out=$(sh -c 'tok=$("$0" lock acquire gui2 demo/a/1 "$1") || exit 1; false; rc=$?; "$0" lock release gui2 "$tok" >/dev/null; exit $rc' "$ln" "$p1" 2>/dev/null); rc=$?
+[ $rc = 1 ] && [ ! -d "$DFLOW_LOCK_DIR/gui2" ] && ok || bad "brief pattern: rc $rc, lock $(ls "$DFLOW_LOCK_DIR")"
+out=$(sh -c 'tok=$("$0" lock acquire gui demo/b/1 "$1") || exit 7; echo used; rc=$?; "$0" lock release gui "$tok"; exit $rc' "$ln" "$p2" 2>/dev/null); rc=$?
+[ $rc = 7 ] && ! echo "$out" | grep -q used && [ -d "$DFLOW_LOCK_DIR/gui" ] && ok || bad "brief pattern when refused: rc $rc $out"
+expect 0 "release by the holder's token" "$ln" lock release gui "$tok"
 expect 0 "show free" "$ln" lock show gui; [ "$out" = "free gui" ] && ok || bad "show after release: $out"
 expect 1 "acquire for a pid that is not running" "$ln" lock acquire gui demo/a/1 999999
 # held by a process that is gone (stop confirmed): another attempt takes it over
 sh -c 'exit 0' & dead=$!; wait "$dead"
 mkdir -p "$DFLOW_LOCK_DIR/gui"; printf 'attempt: demo/a/1\npid: %s\ncommand: sleep 60\nsince: 2026-10-24T00:00:00Z\n' "$dead" > "$DFLOW_LOCK_DIR/gui/holder"
-out=$("$ln" lock acquire gui demo/b/1 "$p2"); [ $? = 0 ] && echo "$out" | grep -q "took over" && ok || bad "takeover of a gone holder: $out"
+out=$("$ln" lock acquire gui demo/b/1 "$p2" 2>&1); [ $? = 0 ] && echo "$out" | grep -q "took over" && ok || bad "takeover of a gone holder: $out"
 # a live pid that now runs another command (pid reused) is gone as a holder
 printf 'attempt: demo/a/1\npid: %s\ncommand: some-old-command\nsince: 2026-10-24T00:00:00Z\n' "$p1" > "$DFLOW_LOCK_DIR/gui/holder"
-out=$("$ln" lock acquire gui demo/b/1 "$p2"); [ $? = 0 ] && ok || bad "takeover of a reused pid: $out"
+out=$("$ln" lock acquire gui demo/b/1 "$p2" 2>&1); [ $? = 0 ] && ok || bad "takeover of a reused pid: $out"
 # stop not confirmed: the holder still runs, so its lock is not reused
 printf 'attempt: demo/a/1\npid: %s\ncommand: %s\nsince: 2026-10-24T00:00:00Z\n' "$p1" "$(ps -ww -o command= -p "$p1")" > "$DFLOW_LOCK_DIR/gui/holder"
 expect 1 "unconfirmed stop keeps the lock" "$ln" lock acquire gui demo/a/2 "$p2"
+# a live holder whose command ps cannot read (no ps) is not judged gone
+mkdir -p "$t/nops"; printf '#!/bin/sh\necho "ps: operation not permitted" >&2; exit 1\n' > "$t/nops/ps"; chmod +x "$t/nops/ps"
+printf 'attempt: demo/a/1\npid: %s\ncommand: some-old-command\nsince: 2026-10-24T00:00:00Z\ntoken: x\n' "$p1" > "$DFLOW_LOCK_DIR/gui/holder"
+out=$(PATH="$t/nops:$PATH" "$ln" lock acquire gui demo/a/2 "$p2" 2>&1); [ $? = 1 ] && grep -qx "token: x" "$DFLOW_LOCK_DIR/gui/holder" && ok || bad "no ps: lock taken over: $out"
 # concurrent takeovers of one stale lock: exactly one winner, the holder names it, nothing left behind
 printf 'attempt: demo/a/1\npid: %s\ncommand: sleep 60\nsince: 2026-10-24T00:00:00Z\n' "$dead" > "$DFLOW_LOCK_DIR/gui/holder"
 : > "$t/won"; rp=()

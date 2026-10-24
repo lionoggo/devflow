@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tests for proc.sh beyond what review-test.sh covers: a second start while the run is alive is refused
-# and overwrites nothing, stdin reaches the command, stop checks identity before any signal.
+# and overwrites nothing (also when started concurrently), stdin reaches the command, stop and wait
+# check identity (exact lstart and command, never a substring) before any signal, peek never signals.
 set -u
 here=$(cd "$(dirname "$0")" && pwd); . "$here/proc.sh"; pass=0; fail=0
 ok() { pass=$((pass+1)); }; bad() { fail=$((fail+1)); echo "FAIL $*"; }
@@ -34,5 +35,24 @@ pid=$(proc_start "$t/out4" sleep 30 < /dev/null); mine+=("$pid"); sleep 0.3
 out=$(PATH="$t/nops:$PATH" proc_stop "$t/out4"); [ $? = 1 ] && kill -0 "$pid" 2>/dev/null && ok || bad "no ps: $out"
 out=$(proc_stop "$t/out4"); [ "$out" = "ok stopped" ] && ok || bad "stop with ps: $out"
 [ "$(proc_canon "$t/./out4")" = "$(cd "$t" && pwd -P)/out4" ] && ok || bad "canon"
+# identity is exact: a process whose command merely contains <out> (another line's longer output path)
+# is never signalled, nor one with the recorded command but another start time (pid reused)
+o5=$(proc_canon "$t/out5")
+python3 -I -c 'import os, sys, time; os.setsid(); time.sleep(30)' "$o5-b-1.out" & f5=$!; disown "$f5"; mine+=("$f5"); sleep 0.3
+printf '%s %s\nlstart: %s\ncommand: python3 -I - %s\n' "$f5" "$(( $(date +%s) - 100 ))" "$(_proc_ps lstart "$f5")" "$o5" > "$o5.pid"
+out=$(proc_stop "$t/out5"); [ $? = 1 ] && kill -0 "$f5" 2>/dev/null && ok || bad "substring identity: stopped $out"
+out=$(proc_wait "$t/out5" 3 1); [ "$out" = "ended lost" ] && kill -0 "$f5" 2>/dev/null && ok || bad "substring identity at the limit: $out"
+printf '%s %s\nlstart: Mon Jan  1 00:00:00 2001\ncommand: %s\n' "$f5" "$(( $(date +%s) - 100 ))" "$(_proc_ps command "$f5")" > "$o5.pid"
+out=$(proc_stop "$t/out5"); [ $? = 1 ] && kill -0 "$f5" 2>/dev/null && ok || bad "other start time: stopped $out"
+# peek: one look, never a signal, even long past any limit
+pid=$(proc_start "$t/out6" sleep 30 < /dev/null); mine+=("$pid"); sleep 0.3
+sed -i '' "1s/ .*/ 1/" "$t/out6.pid"
+out=$(proc_peek "$t/out6"); [ $? = 3 ] && [ "$out" = running ] && kill -0 "$pid" 2>/dev/null && ok || bad "peek: $out"
+proc_stop "$t/out6" >/dev/null; out=$(proc_peek "$t/out6"); [ $? = 1 ] && [ "$out" = "ended lost" ] && ok || bad "peek after stop: $out"
+# concurrent starts on one <out>: exactly one runs, the record and output are the winner's
+: > "$t/won"; rp=()
+for i in 1 2 3 4 5 6; do ( p=$(proc_start "$t/out7" sh -c "echo starter-$i; sleep 30" < /dev/null 2>/dev/null) && echo "$i $p" >> "$t/won" ) & rp+=($!); done; wait "${rp[@]}"
+read -r wi wp < "$t/won"; [ -n "${wp:-}" ] && mine+=("$wp"); sleep 0.5
+[ "$(wc -l < "$t/won" | tr -d ' ')" = 1 ] && [ "$(head -1 "$t/out7.pid" | cut -d' ' -f1)" = "$wp" ] && [ "$(cat "$t/out7")" = "starter-$wi" ] && [ ! -e "$t/out7.starting" ] && ok || bad "concurrent starts: winners $(tr '\n' ';' < "$t/won"); out $(cat "$t/out7")"
 echo "proc-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]

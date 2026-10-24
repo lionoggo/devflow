@@ -3,8 +3,11 @@
 # line's worktree, in its own session so it outlives the call that starts it (lifecycle: proc.sh).
 # Usage:
 #   agent.sh start <slug> <id> <attempt> <brief-file> <worktree> [claude|codex]
-#                 brief on stdin; output to <repo>/.dflow/<slug>/run/<id>-<attempt>.out, one file per
-#                 attempt (an attempt that was started before is refused: start <attempt>+1); prints the pid.
+#                 brief on stdin; its first line must be "dflow 线 <slug>/<id>/<attempt>" for these
+#                 arguments. The attempt is claimed first with mkdir .dflow/<slug>/run/<id>-<attempt>.claim:
+#                 an attempt claimed before (or started at the same moment by another call) is refused
+#                 and nothing of it is overwritten; start <attempt>+1. Output to
+#                 <repo>/.dflow/<slug>/run/<id>-<attempt>.out, one file per attempt; prints the pid.
 #                 Claude: `claude -p --dangerously-skip-permissions`; Codex:
 #                 `codex exec --dangerously-bypass-approvals-and-sandbox -C <worktree> -`. Without a
 #                 model, the other host's: Claude from Codex, else Codex. The command also gets
@@ -16,9 +19,12 @@
 #                 exit 0 "delivered <done|partial|blocked> <sha|path>" (ended, receipt valid for this id
 #                 and attempt), 1 "exited without receipt" (ended; commits on the branch do not count),
 #                 3 "running", 1 "ended lost" or "ended timeout..." as proc_wait prints them
+#   agent.sh peek <slug> <id> <attempt>
+#                 the same answers as wait, from one look: never waits, never signals, no limit
 #   agent.sh stop <slug> <id> <attempt>
 #                 proc_stop: "ok stopped" / "ok not running", or exit 1 "not stopped: <reason>" (the
-#                 identity check failed or the group is still there; nothing else is signalled)
+#                 identity check failed or could not be made, or the group is still there; nothing
+#                 else is signalled)
 # Exit 0 ok, 1 refused or not done, 2 usage, 3 running.
 set -u
 cmd=${1:-}; slug=${2:-}; uid=${3:-}; att=${4:-}
@@ -45,16 +51,19 @@ start)
         codex) set -- codex exec --dangerously-bypass-approvals-and-sandbox -C "$wt" - ;;
         *) usage ;;
     esac; fi
+    first=$(head -1 "$brief" | tr -d '\r')
+    [ "$first" = "dflow 线 $slug/$uid/$att" ] || die "brief $brief starts with \"$first\", not \"dflow 线 $slug/$uid/$att\""
     mkdir -p "$root/.dflow/$slug/run" || die "cannot create $root/.dflow/$slug/run"
+    mkdir "${out%.out}.claim" 2>/dev/null || die "attempt $slug/$uid/$att was claimed before (${out%.out}.claim; $(proc_peek "$out")); start attempt $((att + 1)) instead"
     if [ -e "$out" ] || [ -e "$out.pid" ]; then
-        st=$(proc_wait "$out" 0 999999999)
-        die "attempt $slug/$uid/$att was started before ($st; $out); start attempt $((att + 1)) instead"
+        die "attempt $slug/$uid/$att was started before ($(proc_peek "$out"); $out); start attempt $((att + 1)) instead"
     fi
     export DFLOW_LINE="$slug/$uid/$att" DFLOW_RECEIPT="$root/.dflow/$slug/reports/$uid-$att.md"
     cd "$wt" || exit 1
     proc_start "$out" "$@" < "$brief" ;;
-wait)
-    st=$(proc_wait "$out" "${5:-50}" "${6:-3600}"); rc=$?
+wait|peek)
+    if [ "$cmd" = wait ]; then st=$(proc_wait "$out" "${5:-50}" "${6:-3600}"); rc=$?
+    else st=$(proc_peek "$out"); rc=$?; fi
     case $rc:$st in
     "0:ended exit"*)
         if r=$("$here/lines.sh" receipt "$slug" "$uid" "$att" 2>&1); then echo "delivered $r"; exit 0; fi

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Tests for agent.sh in a throwaway repo and worktree: the worker runs in its worktree with the brief on
 # stdin; done means process ended plus a receipt for this id and attempt (intermediate commits are not
-# done, an old attempt's receipt does not count, a read-only delivery counts); repeated starts are
-# refused without overwriting; stop checks identity first. DFLOW_AGENT_CMD or stub binaries stand in
+# done, an old attempt's receipt does not count, a read-only delivery counts); repeated or concurrent
+# starts of one attempt are refused without overwriting; the brief must name the attempt; peek never
+# signals; stop checks identity first. DFLOW_AGENT_CMD or stub binaries stand in
 # for claude and codex.
 set -u
 here=$(cd "$(dirname "$0")" && pwd); ag="$here/agent.sh"; pass=0; fail=0
@@ -13,10 +14,10 @@ r="$t/repo"; git init -q "$r"; cd "$r"; git config user.email t@t; git config us
 echo a > a.txt; git add -A; git commit -qm base
 git worktree add -q -b wa "$t/wa"; "$here/lines.sh" init demo >/dev/null
 wt=$(cd "$t/wa" && pwd -P)
-printf 'dflow 线 demo/a/1\n做这件事\n' > .dflow/demo/briefs/a-1.md
+bf() { printf 'dflow 线 demo/a/%s\n做这件事\n' "$1" > ".dflow/demo/briefs/a-$1.md"; echo ".dflow/demo/briefs/a-$1.md"; }
 rep=.dflow/demo/reports
 run() { # run <attempt> <shell command>: start with DFLOW_AGENT_CMD, record the pid
-    local p; p=$(DFLOW_AGENT_CMD=$2 "$ag" start demo a "$1" .dflow/demo/briefs/a-1.md "$t/wa"); local rc=$?
+    local p; p=$(DFLOW_AGENT_CMD=$2 "$ag" start demo a "$1" "$(bf "$1")" "$t/wa"); local rc=$?
     [ -n "$p" ] && mine+=("$p"); echo "$p"; return $rc
 }
 
@@ -65,18 +66,40 @@ out=$("$ag" wait demo a 7 1); [ "$out" = "ended lost" ] && ok || bad "wait after
 # the real commands, through stubs on PATH: model, flags, worktree, and brief on stdin
 mkdir -p "$t/bin"
 for m in claude codex; do printf '#!/bin/sh\necho "%s $*"; echo "cwd $(pwd -P)"; cat\n' "$m" > "$t/bin/$m"; chmod +x "$t/bin/$m"; done
-p=$(PATH="$t/bin:$PATH" "$ag" start demo a 8 .dflow/demo/briefs/a-1.md "$t/wa" claude); mine+=("$p")
+p=$(PATH="$t/bin:$PATH" "$ag" start demo a 8 "$(bf 8)" "$t/wa" claude); mine+=("$p")
 "$ag" wait demo a 8 20 >/dev/null
 grep -qx "claude -p --dangerously-skip-permissions" .dflow/demo/run/a-8.out && grep -qx "cwd $wt" .dflow/demo/run/a-8.out && grep -qx "做这件事" .dflow/demo/run/a-8.out && ok || bad "claude command: $(cat .dflow/demo/run/a-8.out)"
-p=$(PATH="$t/bin:$PATH" "$ag" start demo a 9 .dflow/demo/briefs/a-1.md "$t/wa" codex); mine+=("$p")
+p=$(PATH="$t/bin:$PATH" "$ag" start demo a 9 "$(bf 9)" "$t/wa" codex); mine+=("$p")
 "$ag" wait demo a 9 20 >/dev/null
 grep -qx "codex exec --dangerously-bypass-approvals-and-sandbox -C $wt -" .dflow/demo/run/a-9.out && grep -qx "做这件事" .dflow/demo/run/a-9.out && ok || bad "codex command: $(cat .dflow/demo/run/a-9.out)"
-p=$(PATH="$t/bin:$PATH" "$ag" start demo a 10 .dflow/demo/briefs/a-1.md "$t/wa"); mine+=("$p")
+p=$(PATH="$t/bin:$PATH" "$ag" start demo a 10 "$(bf 10)" "$t/wa"); mine+=("$p")
 "$ag" wait demo a 10 20 >/dev/null
 grep -Eq '^(claude -p --dangerously-skip-permissions|codex exec --dangerously-bypass-approvals-and-sandbox -C .* -)$' .dflow/demo/run/a-10.out && ok || bad "default model: $(cat .dflow/demo/run/a-10.out)"
 
-out=$("$ag" start demo a 11 .dflow/demo/briefs/a-1.md "$t/nowhere" 2>&1); [ $? = 1 ] && ok || bad "missing worktree: $out"
-"$ag" start demo a 0 .dflow/demo/briefs/a-1.md "$t/wa" >/dev/null 2>&1; [ $? = 1 ] && ok || bad "attempt 0 accepted"
+out=$("$ag" start demo a 11 "$(bf 11)" "$t/nowhere" 2>&1); [ $? = 1 ] && ok || bad "missing worktree: $out"
+"$ag" start demo a 0 "$(bf 1)" "$t/wa" >/dev/null 2>&1; [ $? = 1 ] && ok || bad "attempt 0 accepted"
 "$ag" wait >/dev/null 2>&1; [ $? = 2 ] && ok || bad "usage"
+
+# the brief must name this slug, id and attempt: a brief for another attempt is refused, nothing claimed
+bf 1 > /dev/null; cp .dflow/demo/briefs/a-1.md .dflow/demo/briefs/a-12.md
+out=$(DFLOW_AGENT_CMD='echo ran' "$ag" start demo a 12 .dflow/demo/briefs/a-12.md "$t/wa" 2>&1); [ $? = 1 ] && echo "$out" | grep -q "not \"dflow 线 demo/a/12\"" && [ ! -e .dflow/demo/run/a-12.out ] && [ ! -e .dflow/demo/run/a-12.claim ] && ok || bad "brief for another attempt accepted: $out"
+printf '做这件事\n' > .dflow/demo/briefs/a-12.md
+out=$(DFLOW_AGENT_CMD='echo ran' "$ag" start demo a 12 .dflow/demo/briefs/a-12.md "$t/wa" 2>&1); [ $? = 1 ] && [ ! -e .dflow/demo/run/a-12.out ] && ok || bad "brief without the line marker accepted: $out"
+# concurrent starts of one attempt: exactly one starts, the others overwrite nothing
+b13=$(bf 13); : > "$t/won13"; rp=()
+for i in 1 2 3 4 5 6; do ( p=$(DFLOW_AGENT_CMD="echo starter-$i; sleep 30" "$ag" start demo a 13 "$b13" "$t/wa" 2>/dev/null) && echo "$i $p" >> "$t/won13" ) & rp+=($!); done; wait "${rp[@]}"
+read -r wi wp < "$t/won13"; [ -n "${wp:-}" ] && mine+=("$wp"); sleep 0.5
+[ "$(wc -l < "$t/won13" | tr -d ' ')" = 1 ] && [ "$(head -1 .dflow/demo/run/a-13.out.pid | cut -d' ' -f1)" = "$wp" ] && [ "$(cat .dflow/demo/run/a-13.out)" = "starter-$wi" ] && ok || bad "concurrent starts: winners $(tr '\n' ';' < "$t/won13"); out $(cat .dflow/demo/run/a-13.out)"
+# peek looks without signalling: no limit, the worker keeps running; an ended attempt reads like wait
+out=$("$ag" peek demo a 13); [ $? = 3 ] && [ "$out" = running ] && kill -0 "$wp" 2>/dev/null && ok || bad "peek running: $out"
+"$ag" stop demo a 13 >/dev/null
+out=$("$ag" peek demo a 4); [ $? = 0 ] && [ "$out" = "delivered done $(git -C "$t/wa" rev-parse HEAD)" ] && ok || bad "peek delivered: $out"
+out=$("$ag" peek demo a 2); [ $? = 1 ] && [ "$out" = "exited without receipt" ] && ok || bad "peek without receipt: $out"
+# peek of a run over any limit, with no ps: reported running, never signalled
+pid=$(run 14 'sleep 30'); sleep 0.3
+mkdir -p "$t/nops"; printf '#!/bin/sh\necho "ps: operation not permitted" >&2; exit 1\n' > "$t/nops/ps"; chmod +x "$t/nops/ps"
+out=$(PATH="$t/nops:$PATH" "$ag" peek demo a 14); [ "$out" = running ] && kill -0 "$pid" 2>/dev/null && ok || bad "peek without ps: $out"
+out=$(PATH="$t/nops:$PATH" "$ag" wait demo a 14 1 1); case $out in "ended timeout, not stopped"*) kill -0 "$pid" 2>/dev/null && ok || bad "no ps: worker stopped at the limit";; *) bad "no ps at the limit: $out";; esac
+"$ag" stop demo a 14 >/dev/null
 echo "agent-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]

@@ -8,7 +8,9 @@
 #
 # Usage: run-state.sh claim|check|caffeinate|release|scope <slug>
 #   claim       take the lease for this session; refused while another live agent process
-#               (claude or codex) holds it; taking over a stale lease stops the previous
+#               (claude or codex) holds it, or while the holder pid is alive and ps cannot tell
+#               what it is, and refused when this session's own pid is unknown or not running;
+#               taking over a stale lease stops the previous
 #               owner's caffeinate. The lock directory appears with its lease in one rename;
 #               takers of a stale lease queue on <slug>.lock.takeover, and the renamed lease must
 #               still be the one judged stale (else it is put back and the claim refused)
@@ -51,9 +53,12 @@ field() { # field <file> <key>: value from the leading key: value block
 }
 sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 epoch() { date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null || date -u -d "$1" +%s 2>/dev/null; }
-is_agent() { # a live claude or codex process (DFLOW_OWNER_COMM names a stand-in for tests)
+is_agent() { # 0 a live claude or codex process, 1 not (gone, or another program), 2 alive but ps cannot
+    # tell (DFLOW_OWNER_COMM names a stand-in for tests)
+    local c
     [ -n "$1" ] && kill -0 "$1" 2>/dev/null || return 1
-    case $(basename "$(ps -o comm= -p "$1" 2>/dev/null)") in claude|codex|"${DFLOW_OWNER_COMM:-claude}") return 0 ;; esac
+    c=$(ps -o comm= -p "$1" 2>/dev/null) && [ -n "$c" ] || return 2
+    case $(basename "$c") in claude|codex|"${DFLOW_OWNER_COMM:-claude}") return 0 ;; esac
     return 1
 }
 rename() { python3 -I -c 'import os, sys
@@ -75,6 +80,8 @@ need_manifest() {
 case $cmd in
 claim)
     need_manifest; [ -n "$me" ] || die "no session id: run inside Claude Code or Codex (CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID)"
+    printf '%s' "${mypid:-}" | grep -Eq '^[1-9][0-9]*$' && kill -0 "$mypid" 2>/dev/null ||
+        die "cannot tell this session's agent pid (${mypid:-none}); a lease without a live owner pid would look stale at once"
     mkdir -p "$d"
     if install_lock; then echo "ok claimed $slug"; exit 0; fi
     age() { echo $(( $(date +%s) - $(stat -f %m "$1" 2>/dev/null || stat -c %Y "$1") )); }
@@ -84,7 +91,9 @@ claim)
     snap=$(cat "$lease" 2>/dev/null)
     owner=$(field "$lease" session 2>/dev/null); opid=$(field "$lease" pid 2>/dev/null)
     if [ "$owner" = "$me" ]; then echo "ok already held by this session"; exit 0; fi
-    if is_agent "$opid"; then die "held by session $owner (agent pid $opid is alive); close it first"; fi
+    is_agent "$opid"; ia=$?
+    [ $ia != 0 ] || die "held by session $owner (agent pid $opid is alive); close it first"
+    [ $ia != 2 ] || die "held by session $owner: pid $opid is alive and ps cannot tell whether it is an agent; not taken over"
     # Stale lease. One taker at a time; then rename, and check the renamed lease is still the stale one.
     tk="$lock.takeover"
     if ! mkdir "$tk" 2>/dev/null; then

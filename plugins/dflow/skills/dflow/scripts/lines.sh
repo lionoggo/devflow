@@ -7,7 +7,9 @@
 #                     decision has result "closed"
 #   <slug>/           standing.md, briefs/<id>-<attempt>.md, reports/<id>-<attempt>.md, run/,
 #                     ledger.tsv (id attempt sha result evidence_type verifier evidence ts), status.md
-# A receipt is the first line of reports/<id>-<attempt>.md: RECEIPT <id> <attempt> <done|partial|blocked> <sha|path>
+# A receipt is the first line of reports/<id>-<attempt>.md: RECEIPT <id> <attempt> <done|partial|blocked> <sha|path>.
+# The worker writes the whole report to <report>.tmp and then renames it: only the final name counts,
+# and once it exists it is the delivery (never edited after).
 # Every write holds the write lock <slug>/.lock and replaces the file atomically.
 #
 # Usage:
@@ -19,19 +21,36 @@
 #                                         print "<state> <sha|path>" of a valid receipt; 1 when missing,
 #                                         malformed, or naming another id or attempt
 #   lines.sh ledger record <slug> <id> <attempt> <sha> <result> <evidence_type> <verifier> <evidence>
-#                                         result: pass fail blocked; evidence_type: behavior test review self
+#                                         result: pass fail blocked; evidence_type: behavior test review self.
+#                                         <sha> must name exactly one commit (hex, full or a unique prefix);
+#                                         the full sha is stored. Anything else is refused
 #   lines.sh ledger check <slug> <id> <sha>
-#                                         0 when that sha has a pass of type behavior or test (or self with
-#                                         evidence "single-command:...") and no later fail or blocked;
-#                                         otherwise "NOT-PASSED ..." and exit 2. A review pass never counts
-#   lines.sh status <slug>                write <slug>/status.md; print "counts:", "changed:", "gates open:"
+#                                         0 when the verdict on that commit (full sha, exact) is a pass:
+#                                         the latest behavior/test/review row decides when there is one
+#                                         (a review pass never counts); only with none, the latest self
+#                                         row decides, and its pass counts only with evidence
+#                                         "single-command:..." and a brief for that attempt (the table's
+#                                         brief column, or <slug>/briefs/<id>-<attempt>.md) that says
+#                                         单命令验证. Otherwise "NOT-PASSED ..." and exit 2; a sha that
+#                                         names no single commit: exit 1
+#   lines.sh status <slug> [--print]      write <slug>/status.md and print "counts:", "changed:", "gates open:"
+#                                         (changed: lines whose shown fields differ from the last status).
+#                                         The board: per line state, carrier, model, attempt, last progress,
+#                                         receipt, verdict (verifier lines, ids "v-...", in their own
+#                                         table), open gates, and the latest decision rows of the log.
+#                                         --print: print the board only; no file, no snapshot, no lock
 #   lines.sh lock acquire <resource> <slug>/<id>/<attempt> <pid>
-#   lines.sh lock release <resource> <slug>/<id>/<attempt>
+#                                         on success print one line, the holder's token (keep it; the
+#                                         same attempt and pid get the same token again); messages on stderr
+#   lines.sh lock release <resource> <token>
+#                                         released only with the holder's token (checked again after the
+#                                         lock directory is moved aside; a mismatch is put back)
 #   lines.sh lock show <resource>
 #                                         machine-wide resource lock at
 #                                         ${DFLOW_LOCK_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/dflow/locks}/<resource>/holder
-#                                         (attempt, pid, command, since). Taken over only when the holder pid
-#                                         is gone (or now runs another command); released only by its attempt
+#                                         (attempt, pid, command, since, token; show leaves out the token).
+#                                         Taken over only when the holder pid is gone (or now runs another
+#                                         command); a live pid whose command ps cannot read keeps it
 # Exit 0 ok, 1 refused or found a problem, 2 usage (and NOT-PASSED from ledger check).
 set -u
 cmd=${1:-}; sub=""
@@ -57,41 +76,50 @@ alive() { # <pid> <command>: that process still runs, with the recorded command 
 rename() { python3 -I -c 'import os, sys
 try: os.rename(sys.argv[1], sys.argv[2])
 except OSError: sys.exit(1)' "$1" "$2"; }
-lk_install() { # <dir> <attempt> <pid>: fails when <dir> exists
+token() { od -An -tx1 -N16 /dev/urandom | tr -d ' \n'; }
+lk_install() { # <dir> <attempt> <pid> <token>: fails when <dir> exists
     local tmp="$1.new.$$"; rm -rf "$tmp"; mkdir -p "$tmp" || return 1
-    printf 'attempt: %s\npid: %s\ncommand: %s\nsince: %s\n' "$2" "$3" "$(pcmd "$3")" "$(now)" > "$tmp/holder"
+    printf 'attempt: %s\npid: %s\ncommand: %s\nsince: %s\ntoken: %s\n' "$2" "$3" "$(pcmd "$3")" "$(now)" "$4" > "$tmp/holder"
     rename "$tmp" "$1" && return 0
     rm -rf "$tmp"; return 1
 }
-lk_acquire() { # <dir> <attempt> <pid>: prints one line; 0 held by the caller, 1 refused
-    local dir=$1 snap ha hp hc tk="$1.takeover"
-    mkdir -p "$(dirname "$dir")" || { echo "FAIL cannot create $(dirname "$dir")"; return 1; }
-    lk_install "$dir" "$2" "$3" && { echo "ok acquired $dir"; return 0; }
-    [ -f "$dir/holder" ] || [ $(( $(date +%s) - $(mtime "$dir") )) -gt 10 ] || { echo "FAIL $dir is being created; retry"; return 1; }
-    snap=$(cat "$dir/holder" 2>/dev/null); ha=$(hfield "$dir/holder" attempt); hp=$(hfield "$dir/holder" pid); hc=$(hfield "$dir/holder" command)
-    if [ "$ha" = "$2" ] && [ "$hp" = "$3" ]; then echo "ok already held by $2"; return 0; fi
-    if alive "$hp" "$hc"; then echo "FAIL held by ${ha:-?} (pid $hp is alive)"; return 1; fi
+# lk_acquire/lk_release print nothing: they set LK_MSG (one line) and, on a successful acquire, LK_TOKEN
+lk_acquire() { # <dir> <attempt> <pid>: 0 held by the caller, 1 refused
+    local dir=$1 snap ha hp hc ht tk="$1.takeover" tok; tok=$(token); LK_TOKEN=""
+    [ -n "$tok" ] || { LK_MSG="FAIL cannot read /dev/urandom for a token"; return 1; }
+    mkdir -p "$(dirname "$dir")" || { LK_MSG="FAIL cannot create $(dirname "$dir")"; return 1; }
+    lk_install "$dir" "$2" "$3" "$tok" && { LK_TOKEN=$tok; LK_MSG="ok acquired $dir"; return 0; }
+    [ -f "$dir/holder" ] || [ $(( $(date +%s) - $(mtime "$dir") )) -gt 10 ] || { LK_MSG="FAIL $dir is being created; retry"; return 1; }
+    snap=$(cat "$dir/holder" 2>/dev/null); ha=$(hfield "$dir/holder" attempt); hp=$(hfield "$dir/holder" pid)
+    hc=$(hfield "$dir/holder" command); ht=$(hfield "$dir/holder" token)
+    if [ "$ha" = "$2" ] && [ "$hp" = "$3" ] && [ -n "$ht" ]; then LK_TOKEN=$ht; LK_MSG="ok already held by $2"; return 0; fi
+    if alive "$hp" "$hc"; then LK_MSG="FAIL held by ${ha:-?} (pid $hp is alive)"; return 1; fi
     # The holder is gone. Takers queue on <dir>.takeover; then rename, and check the renamed holder is
     # still the one judged gone (a newer holder is put back and the takeover refused).
     if ! mkdir "$tk" 2>/dev/null; then
         [ $(( $(date +%s) - $(mtime "$tk") )) -gt 10 ] && rename "$tk" "$tk.dead.$$" && rm -rf "$tk.dead.$$"
-        mkdir "$tk" 2>/dev/null || { echo "FAIL another takeover of $dir is in progress; retry"; return 1; }
+        mkdir "$tk" 2>/dev/null || { LK_MSG="FAIL another takeover of $dir is in progress; retry"; return 1; }
     fi
-    if [ "$(cat "$dir/holder" 2>/dev/null)" != "$snap" ]; then rmdir "$tk"; echo "FAIL holder of $dir changed; retry"; return 1; fi
-    if ! rename "$dir" "$dir.stale.$$"; then rmdir "$tk"; echo "FAIL lost the race for $dir; retry"; return 1; fi
+    if [ "$(cat "$dir/holder" 2>/dev/null)" != "$snap" ]; then rmdir "$tk"; LK_MSG="FAIL holder of $dir changed; retry"; return 1; fi
+    if ! rename "$dir" "$dir.stale.$$"; then rmdir "$tk"; LK_MSG="FAIL lost the race for $dir; retry"; return 1; fi
     if [ "$(cat "$dir.stale.$$/holder" 2>/dev/null)" != "$snap" ]; then
-        rename "$dir.stale.$$" "$dir" || echo "FAIL could not put back $dir (left at $dir.stale.$$)"
-        rmdir "$tk"; echo "FAIL holder of $dir changed during takeover; put back, not taken"; return 1
+        rename "$dir.stale.$$" "$dir" || echo "FAIL could not put back $dir (left at $dir.stale.$$)" >&2
+        rmdir "$tk"; LK_MSG="FAIL holder of $dir changed during takeover; put back, not taken"; return 1
     fi
     rm -rf "$dir.stale.$$"
-    if ! lk_install "$dir" "$2" "$3"; then rmdir "$tk"; echo "FAIL lost the race for $dir; retry"; return 1; fi
-    rmdir "$tk"; echo "ok took over $dir from ${ha:-?} (pid ${hp:-?} gone)"; return 0
+    if ! lk_install "$dir" "$2" "$3" "$tok"; then rmdir "$tk"; LK_MSG="FAIL lost the race for $dir; retry"; return 1; fi
+    rmdir "$tk"; LK_TOKEN=$tok; LK_MSG="ok took over $dir from ${ha:-?} (pid ${hp:-?} gone)"; return 0
 }
-lk_release() { # <dir> <attempt>
-    [ -d "$1" ] || { echo "ok not held"; return 0; }
-    local ha; ha=$(hfield "$1/holder" attempt)
-    [ "$ha" = "$2" ] || { echo "FAIL $1 is held by ${ha:-?}, not $2"; return 1; }
-    rename "$1" "$1.rel.$$" && rm -rf "$1.rel.$$" && echo "ok released $1"
+lk_release() { # <dir> <token>
+    [ -d "$1" ] || { LK_MSG="ok not held"; return 0; }
+    local ht ha; ht=$(hfield "$1/holder" token); ha=$(hfield "$1/holder" attempt)
+    [ -n "$2" ] && [ "$ht" = "$2" ] || { LK_MSG="FAIL $1 is held by ${ha:-?} under another token; not released"; return 1; }
+    rename "$1" "$1.rel.$$" || { LK_MSG="FAIL $1 moved while releasing; not released"; return 1; }
+    if [ "$(hfield "$1.rel.$$/holder" token)" != "$2" ]; then # a takeover installed a new holder in between
+        rename "$1.rel.$$" "$1" || echo "FAIL could not put back $1 (left at $1.rel.$$)" >&2
+        LK_MSG="FAIL holder of $1 changed while releasing; put back, not released"; return 1
+    fi
+    rm -rf "$1.rel.$$"; LK_MSG="ok released $1"
 }
 
 if [ "$cmd" = lock ]; then
@@ -101,13 +129,16 @@ if [ "$cmd" = lock ]; then
     case $sub in
     acquire)
         att=${2:-}; pid=${3:-}; [ -n "$att" ] && [ -n "$pid" ] || usage
-        valid '^[a-z0-9][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*/[1-9][0-9]*$' "$att" || die "attempt must be <slug>/<id>/<n>: $att"
-        valid '^[1-9][0-9]*$' "$pid" && kill -0 "$pid" 2>/dev/null || die "pid $pid is not a running process"
-        lk_acquire "$ldir" "$att" "$pid"; exit $? ;;
-    release) [ -n "${2:-}" ] || usage; lk_release "$ldir" "$2"; exit $? ;;
+        valid '^[a-z0-9][a-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*/[1-9][0-9]*$' "$att" || { echo "FAIL attempt must be <slug>/<id>/<n>: $att" >&2; exit 1; }
+        valid '^[1-9][0-9]*$' "$pid" && kill -0 "$pid" 2>/dev/null || { echo "FAIL pid $pid is not a running process" >&2; exit 1; }
+        lk_acquire "$ldir" "$att" "$pid"; rc=$?
+        echo "$LK_MSG" >&2; [ $rc = 0 ] && echo "$LK_TOKEN"; exit $rc ;;
+    release)
+        [ -n "${2:-}" ] || usage
+        lk_release "$ldir" "$2"; rc=$?; echo "$LK_MSG"; exit $rc ;;
     show)
         [ -f "$ldir/holder" ] || { echo "free $res"; exit 0; }
-        cat "$ldir/holder"
+        grep -v '^token: ' "$ldir/holder"
         if alive "$(hfield "$ldir/holder" pid)" "$(hfield "$ldir/holder" command)"; then echo "state: alive"; else echo "state: gone"; fi ;;
     *) usage ;;
     esac
@@ -121,14 +152,13 @@ cd "$root" || exit 1
 table=".dflow/$slug.units.tsv"; d=".dflow/$slug"; ledger="$d/ledger.tsv"; dlog=".dflow/$slug.tsv"
 set -f
 
-wlocked=""
 wlock() { # the write lock, retried for up to 10 seconds; released on exit
-    local i out
+    local i
     for i in $(seq 1 100); do
-        out=$(lk_acquire "$d/.lock" "lines/$slug/$$" "$$") && { wlocked=1; trap 'lk_release "$d/.lock" "lines/$slug/$$" >/dev/null' EXIT; return 0; }
+        lk_acquire "$d/.lock" "lines/$slug/$$" "$$" && { wtok=$LK_TOKEN; trap 'lk_release "$d/.lock" "$wtok"' EXIT; return 0; }
         sleep 0.1
     done
-    die "write lock $d/.lock: $out"
+    die "write lock $d/.lock: $LK_MSG"
 }
 replace() { mv -f "$1" "$2"; }  # <tmp> <file>: atomic within one directory
 need_init() { [ -f "$ledger" ] || die "no $ledger; run lines.sh init $slug"; }
@@ -148,24 +178,86 @@ receipt_of() { # <id> <attempt>: "<state> <ref>", or the reason (return 1)
     case $r in BAD|"") echo "bad receipt $f: first line must be RECEIPT $1 $2 <done|partial|blocked> <sha|path>"; return 1 ;; esac
     echo "$r"
 }
-full_sha() { git rev-parse -q --verify "$1^{commit}" 2>/dev/null || printf '%s\n' "$1"; }
-verdict() { # <id> <sha>: "ok" or the reason
-    awk -F'\t' -v id="$1" -v s="$2" '
-        function same(a, b) { if (a == b) return 1
-            if (a ~ /^[0-9a-f]+$/ && b ~ /^[0-9a-f]+$/ && length(a) >= 7 && length(b) >= 7) return index(a, b) == 1 || index(b, a) == 1
-            return 0 }
+resolve() { # <sha>: the one full commit id it names (hex, full or a unique prefix); nothing and 1 otherwise
+    local f
+    valid '^[0-9a-f]{4,40}$' "$1" || return 1
+    f=$(git rev-parse -q --verify "$1^{commit}" 2>/dev/null) || return 1
+    case $f in "$1"*) echo "$f" ;; *) return 1 ;; esac
+}
+brief_of() { # <id> <attempt>: the brief file of that attempt
+    local b="-"
+    [ -f "$table" ] && [ "$(tcol "$1" attempt)" = "$2" ] && b=$(tcol "$1" brief)
+    [ -n "$b" ] && [ "$b" != - ] && echo "$b" || echo "$d/briefs/$1-$2.md"
+}
+verdict() { # <id> <full sha>: "ok" or the reason
+    local v b
+    v=$(awk -F'\t' -v id="$1" -v s="$2" '
         NR == 1 { for (i = 1; i <= NF; i++) h[$i] = i; next }
         $h["id"] != id { next }
-        !same($h["sha"], s) { if ($h["result"] == "pass") other = other " " $h["sha"]; next }
-        { r = $h["result"]; t = $h["evidence_type"]; n++
-          if (r == "pass" && (t == "behavior" || t == "test" || (t == "self" && index($h["evidence"], "single-command:") == 1))) ok = 1
-          else if (r == "pass") weak = t
-          else { ok = 0; last = r " (" t ", " $h["verifier"] ")" } }
-        END { if (ok) print "ok"
-              else if (last != "") print "latest verdict on this sha is " last
-              else if (weak != "") print "only a " weak " pass on this sha (review never counts; self needs single-command: evidence)"
+        $h["sha"] != s { if ($h["result"] == "pass") other = other " " $h["sha"]; next }
+        $h["evidence_type"] == "review" && $h["result"] == "pass" { next }  # a reading can fail a sha, never pass it
+        $h["evidence_type"] != "self" { nr = $h["result"]; nt = $h["evidence_type"]; nv = $h["verifier"]; next }
+        { sr = $h["result"]; sv = $h["verifier"]; sa = $h["attempt"]; se = (index($h["evidence"], "single-command:") == 1) }
+        END { if (nr != "") {
+                  if (nr == "pass" && (nt == "behavior" || nt == "test")) print "ok"
+                  else if (nr == "pass") print "latest verdict on this sha is a " nt " pass, which never counts"
+                  else print "latest verdict on this sha is " nr " (" nt ", " nv ")" }
+              else if (sr != "") {
+                  if (sr != "pass") print "latest verdict on this sha is " sr " (self, " sv ")"
+                  else if (!se) print "only a self pass without single-command: evidence on this sha"
+                  else print "SELF " sa }
               else if (other != "") print "no verdict on this sha; pass recorded on" other " only"
-              else print "no verdict on this sha" }' "$ledger"
+              else print "no verdict on this sha" }' "$ledger")
+    case $v in
+    "SELF "*)
+        b=$(brief_of "$1" "${v#SELF }")
+        if grep -qF '单命令验证' "$b" 2>/dev/null; then echo ok
+        else echo "only a self pass on this sha, and brief $b does not allow it (no 单命令验证)"; fi ;;
+    *) echo "$v" ;;
+    esac
+}
+line_rows() { # one row per line, tab-separated: id state carrier model attempt progress_at receipt verdict
+    local id st att rc vd r full
+    for id in $(ids); do
+        st=$(tcol "$id" state); att=$(tcol "$id" attempt); rc="-"; vd="-"
+        if valid "$N_RE" "$att"; then
+            if r=$(receipt_of "$id" "$att"); then rc=$r
+                full=$(resolve "${r#* }") && [ "$(verdict "$id" "$full")" = ok ] && vd="pass @${r#* }"
+            else rc="无"; fi
+        fi
+        if [ "$vd" = - ]; then
+            vd=$(awk -F'\t' -v id="$id" -v a="$att" 'NR > 1 && $1 == id && $2 == a { v = $4 " " $5 " @" substr($3, 1, 12) } END { print (v == "" ? "-" : v) }' "$ledger")
+        fi
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$st" "$(tcol "$id" carrier)" "$(tcol "$id" model)" "$att" "$(tcol "$id" progress_at)" "$rc" "$vd"
+    done
+}
+board() { # <rows from line_rows>: the board in Markdown; sets GATES_OPEN
+    local rows=$1 ng=0 nd=0 ts q why gates dec
+    md_table() { # <awk filter on the id>
+        echo "| 线 | 状态 | 载体 | 模型 | 尝试 | 最近进展 | 回执 | 验收 |"
+        echo "|---|---|---|---|---|---|---|---|"
+        printf '%s\n' "$rows" | awk -F'\t' "NF && $1"' { for (i = 1; i <= NF; i++) gsub(/\|/, "/", $i); printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5, $6, $7, $8 }'
+    }
+    echo "# 多线看板 $slug"
+    echo
+    echo "生成于 $(now)，取自单元表、ledger.tsv、回执和决策日志；进程和 git 状态以现场核对为准。"
+    echo
+    md_table '$1 !~ /^v-/'
+    if printf '%s\n' "$rows" | grep -q '^v-'; then echo; echo "## 验收线"; echo; md_table '$1 ~ /^v-/'; fi
+    gates=$(awk -F'\t' 'NR > 1 && $2 == "gate" { if ($6 == "closed") delete open[$3]; else { open[$3] = $1 "\t" $3 "\t" $4; if (!($3 in seen)) { seen[$3] = 1; order[++n] = $3 } } }
+        END { for (i = 1; i <= n; i++) if (order[i] in open) print open[order[i]] }' "$dlog" 2>/dev/null)
+    echo; echo "## 等你定"; echo
+    while IFS=$'\t' read -r ts q why; do
+        [ -n "$q" ] || continue; ng=$((ng + 1)); echo "- ${q}（${why}；${ts}，见 ${dlog}）"
+    done <<< "$gates"
+    [ $ng -gt 0 ] || echo "- 无"
+    dec=$(awk -F'\t' 'NR > 1 && $2 == "decision" { print $1 "\t" $3 "\t" $4 }' "$dlog" 2>/dev/null | tail -5)
+    echo; echo "## 最近决定"; echo
+    while IFS=$'\t' read -r ts q why; do
+        [ -n "$q" ] || continue; nd=$((nd + 1)); echo "- ${q}（${why}；${ts}）"
+    done <<< "$dec"
+    [ $nd -gt 0 ] || echo "- 无"
+    GATES_OPEN=$ng
 }
 
 case $cmd:$sub in
@@ -220,59 +312,36 @@ ledger:record)
     case $res in pass|fail|blocked) ;; *) die "result must be pass, fail or blocked: $res" ;; esac
     case $et in behavior|test|review|self) ;; *) die "evidence_type must be behavior, test, review or self: $et" ;; esac
     [ -n "$sha" ] && [ -n "$who" ] && [ -n "$ev" ] || usage
+    full=$(resolve "$sha") || die "$sha does not name exactly one commit (give a full or unique sha)"
     need_init; wlock
     cp "$ledger" "$ledger.tmp.$$" || die "cannot copy $ledger"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$att" "$(clean "$(full_sha "$sha")")" "$res" "$et" "$(clean "$who")" "$(clean "$ev")" "$(now)" >> "$ledger.tmp.$$"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$att" "$full" "$res" "$et" "$(clean "$who")" "$(clean "$ev")" "$(now)" >> "$ledger.tmp.$$"
     replace "$ledger.tmp.$$" "$ledger"
-    echo "ok recorded $id/$att $res ($et)" ;;
+    echo "ok recorded $id/$att $res ($et) at $full" ;;
 ledger:check)
     id=${2:-}; sha=${3:-}; [ -n "$id" ] && [ -n "$sha" ] || usage
     need_init
-    v=$(verdict "$id" "$(full_sha "$sha")")
-    [ "$v" = ok ] && { echo "ok passed $id at $sha"; exit 0; }
-    echo "NOT-PASSED $id at $sha: $v"; exit 2 ;;
+    full=$(resolve "$sha") || die "$sha does not name exactly one commit (give a full or unique sha)"
+    v=$(verdict "$id" "$full")
+    [ "$v" = ok ] && { echo "ok passed $id at $full"; exit 0; }
+    echo "NOT-PASSED $id at $full: $v"; exit 2 ;;
 status:)
+    case ${2:-} in ""|--print) ;; *) usage ;; esac
     [ -f "$table" ] || die "no unit table $table"
-    need_init; wlock
-    snap="$d/.status.snap"; new="$d/.status.snap.tmp.$$"; md="$d/status.md.tmp.$$"; : > "$new"
-    total=0; recs=0; passed=0; states=""
-    {
-        echo "# 多线看板 $slug"
-        echo
-        echo "生成于 $(now)，取自单元表、ledger.tsv 和回执；进程和 git 状态以现场核对为准。"
-        echo
-        echo "| 线 | 状态 | 载体 | 模型 | 尝试 | 最近进展 | 回执 | 验收 |"
-        echo "|---|---|---|---|---|---|---|---|"
-    } > "$md"
-    for id in $(ids); do
-        total=$((total + 1))
-        st=$(tcol "$id" state); att=$(tcol "$id" attempt); states="$states $st"
-        rc="-"; vd="-"
-        if valid "$N_RE" "$att"; then
-            if r=$(receipt_of "$id" "$att"); then rc=$r; recs=$((recs + 1))
-                set -- $r
-                if [ "$(verdict "$id" "$(full_sha "$2")")" = ok ]; then vd="pass @$2"; passed=$((passed + 1)); fi
-            else rc="无"; fi
-        fi
-        if [ "$vd" = - ]; then
-            vd=$(awk -F'\t' -v id="$id" -v a="$att" 'NR > 1 && $1 == id && $2 == a { v = $4 " " $5 " @" substr($3, 1, 12) } END { print (v == "" ? "-" : v) }' "$ledger")
-        fi
-        printf '| %s | %s | %s | %s | %s | %s | %s | %s |\n' "$id" "$st" "$(tcol "$id" carrier)" "$(tcol "$id" model)" "$att" \
-            "$(tcol "$id" progress_at)" "$(printf '%s' "$rc" | tr '|' '/')" "$(printf '%s' "$vd" | tr '|' '/')" >> "$md"
-        printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$st" "$att" "$rc" "$vd" >> "$new"
-    done
-    gates=$(awk -F'\t' 'NR > 1 && $2 == "gate" { if ($6 == "closed") delete open[$3]; else { open[$3] = $1 "\t" $3 "\t" $4; if (!($3 in seen)) { seen[$3] = 1; order[++n] = $3 } } }
-        END { for (i = 1; i <= n; i++) if (order[i] in open) print open[order[i]] }' "$dlog" 2>/dev/null)
-    ng=0; { echo; echo "## 等你定"; echo; } >> "$md"
-    while IFS=$'\t' read -r ts q why; do
-        [ -n "$q" ] || continue; ng=$((ng + 1)); echo "- ${q}（${why}；${ts}，见 ${dlog}）" >> "$md"
-    done <<< "$gates"
-    [ $ng -gt 0 ] || echo "- 无" >> "$md"
+    need_init
+    if [ "${2:-}" = --print ]; then # read only: nothing written, no lock
+        board "$(line_rows)"; exit 0
+    fi
+    wlock
+    snap="$d/.status.snap"; new="$d/.status.snap.tmp.$$"; md="$d/status.md.tmp.$$"
+    line_rows > "$new"
+    board "$(cat "$new")" > "$md"; ng=$GATES_OPEN
     replace "$md" "$d/status.md"
-    changed=$(awk -F'\t' 'FNR == NR { old[$1] = $0; next } old[$1] != $0 { printf "%s ", $1 }' "$snap" "$new" 2>/dev/null || cut -f1 "$new" | tr '\n' ' ')
-    [ -f "$snap" ] || changed=$(cut -f1 "$new" | tr '\n' ' ')
+    if [ -f "$snap" ]; then changed=$(awk -F'\t' 'FNR == NR { old[$1] = $0; next } old[$1] != $0 { printf "%s ", $1 }' "$snap" "$new")
+    else changed=$(cut -f1 "$new" | tr '\n' ' '); fi
+    total=$(grep -c . "$new"); recs=$(awk -F'\t' '$7 != "-" && $7 != "无"' "$new" | grep -c .); passed=$(awk -F'\t' '$8 ~ /^pass @/' "$new" | grep -c .)
+    sc=$(cut -f2 "$new" | sort | uniq -c | awk '{ printf "%s%s %s", (NR > 1 ? ", " : ""), $2, $1 }')
     replace "$new" "$snap"
-    sc=$(printf '%s\n' $states | sort | uniq -c | awk '{ printf "%s%s %s", (NR > 1 ? ", " : ""), $2, $1 }')
     echo "counts: $total lines${sc:+; $sc}; receipts $recs; passed $passed"
     changed=${changed% }; echo "changed: ${changed:-none}"
     echo "gates open: $ng" ;;

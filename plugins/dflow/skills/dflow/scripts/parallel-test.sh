@@ -99,6 +99,7 @@ git worktree add -q -b dflow-unit/demo-zz .dflow/worktrees/demo-zz "$base"
 out=$("$ps" cleanup demo)
 echo "$out" | grep -q "KEEP w1" && ok || bad "unlanded codex unit not kept: $out"
 echo "$out" | grep -q "ORPHAN .*demo-zz" && ok || bad "orphan under .dflow/worktrees not listed: $out"
+"$ps" land demo w1 >/dev/null && "$ps" unland demo w1 >/dev/null   # land records the source commit
 awk -F'\t' -v OFS='\t' 'NR>1 && $1=="w1"{$4="landed"} {print}' .dflow/demo.units.tsv > .dflow/x && mv .dflow/x .dflow/demo.units.tsv
 "$ps" cleanup demo >/dev/null
 [ ! -d "$wt" ] && ! git rev-parse -q --verify dflow-unit/demo-w1 >/dev/null && ok || bad "landed codex unit not removed"
@@ -114,26 +115,42 @@ git worktree remove --force "$wt3"; git branch -D -q dflow-unit/demo-w3
 out=$("$ps" worktree demo w3); [ $? = 0 ] && [ "$(git -C "$wt3" rev-parse HEAD)" = "$head" ] && ok || bad "sent-back unit not recreated at the new base: $out"
 expect 0 "sent-back worktree at the new base is reused" "$ps" worktree demo w3
 
-# land by sha: the branch moved on after the sha was verified; only base..<sha> is checked and landed
+# land by sha: the branch moved on after the sha was verified -> refused, nothing landed
 head=$(git rev-parse HEAD)
 git worktree add -q -b ws "$t/ws" "$head"
 ( cd "$t/ws"; echo S1 > app/s.py; git add -A; git commit -qm s1 ); s1=$(git -C "$t/ws" rev-parse HEAD)
-( cd "$t/ws"; echo S2 > app/s2.py; git add -A; git commit -qm s2 )
-printf 's\t-\tapp/s.py\tdispatched\t%s\t-\tws\t-\t0\t-\n' "$head" >> .dflow/demo.units.tsv
-expect 1 "scope of the whole branch sees the unverified commit" "$ps" scope demo s
-out=$("$ps" scope demo s "$s1"); [ $? = 0 ] && echo "$out" | grep -q "^note: ws is at .* past $s1" && ok || bad "scope at the verified sha: $out"
+( cd "$t/ws"; echo S2 > app/s2.py; git add -A; git commit -qm s2 ); s2=$(git -C "$t/ws" rev-parse HEAD)
+printf 's\t-\tapp/s.py app/s2.py\tdispatched\t%s\t-\tws\t-\t0\t-\n' "$head" >> .dflow/demo.units.tsv
+out=$("$ps" scope demo s "$s1"); [ $? = 1 ] && echo "$out" | grep -q "changed after" && ok || bad "scope at a sha the branch moved past: $out"
 out=$("$ps" land demo s "${s1:0:12}"); rc=$?
-[ $rc = 0 ] && echo "$out" | grep -q "^note:" && [ "$(cat app/s.py)" = S1 ] && [ ! -e app/s2.py ] && ok || bad "land by sha: $rc $out"
-expect 0 "unland s" "$ps" unland demo s
+[ $rc = 1 ] && echo "$out" | grep -q "changed after" && [ ! -e app/s.py ] && [ -z "$(git status --porcelain)" ] && ok || bad "land at a sha the branch moved past: $rc $out"
 notonbr=$(git commit-tree -p "$head" -m stray "$(git write-tree)")
-out=$("$ps" land demo s "$notonbr"); [ $? = 1 ] && echo "$out" | grep -q "is not on branch ws" && [ -z "$(git status --porcelain)" ] && ok || bad "sha off the branch: $out"
-expect 1 "unknown sha" "$ps" land demo s nosuchsha
-out=$("$ps" land demo s "$(git -C "$t/ws" rev-parse HEAD)"); echo "$out" | grep -q "^note:" && bad "note printed at the branch head: $out" || ok
-[ -f app/s2.py ] && ok || bad "land at the branch head did not land both commits"
+out=$("$ps" land demo s "$notonbr"); [ $? = 1 ] && [ -z "$(git status --porcelain)" ] && ok || bad "sha off the branch: $out"
+expect 1 "unknown sha" "$ps" land demo s abcdef0
+expect 1 "a branch name is not a sha" "$ps" land demo s ws
+expect 0 "scope at the branch head" "$ps" scope demo s "$s2"
+expect 0 "land at the branch head" "$ps" land demo s "${s2:0:12}"
+[ "$(cat app/s.py)" = S1 ] && [ -f app/s2.py ] && ok || bad "land at the branch head did not land both commits"
+[ "$(tail -1 .dflow/demo.landed)" = "$(printf 's\t%s' "$s2")" ] && ok || bad "land did not record the source: $(cat .dflow/demo.landed)"
 "$ps" unland demo s >/dev/null
+# cleanup keeps a landed unit whose branch moved past what landed
+awk -F'\t' -v OFS='\t' 'NR>1 && $1=="s"{$4="landed"} {print}' .dflow/demo.units.tsv > .dflow/x && mv .dflow/x .dflow/demo.units.tsv
+( cd "$t/ws"; echo S3 > app/s2.py; git commit -qam s3 )
+out=$("$ps" cleanup demo); echo "$out" | grep -q "KEEP s ws: 1 commit(s) past the landed $s2" && [ -d "$t/ws" ] && ok || bad "landed unit with later commits removed: $out"
+# cleanup keeps every non-final state, even an empty clean branch: stop-unconfirmed, dispatched, unknown
+for st in stop-unconfirmed dispatched weird; do
+    git worktree add -q -b "e-$st" "$t/e-$st" "$head"
+    printf 'e-%s\t-\tapp/e.py\t%s\t%s\t-\te-%s\t-\t0\t-\n' "$st" "$st" "$head" "$st" >> .dflow/demo.units.tsv
+done
+git worktree add -q -b e-done "$t/e-done" "$head"; printf 'e-done\t-\tapp/e.py\tdone\t%s\t-\te-done\t-\t0\t-\n' "$head" >> .dflow/demo.units.tsv
+out=$("$ps" cleanup demo)
+for st in stop-unconfirmed dispatched weird; do
+    echo "$out" | grep -q "KEEP e-$st e-$st: state $st" && [ -d "$t/e-$st" ] && git rev-parse -q --verify "e-$st" >/dev/null && ok || bad "empty $st unit removed: $out"
+done
+[ ! -d "$t/e-done" ] && echo "$out" | grep -q "ok removed e-done" && ok || bad "empty done unit kept: $out"
 # the widened 多线 table (lines.sh init) is read by header name
 "$here/lines.sh" init demo >/dev/null
-expect 0 "scope on the widened table" "$ps" scope demo s "$s1"
+expect 0 "scope on the widened table" "$ps" scope demo s "$(git -C "$t/ws" rev-parse HEAD)"
 # orphan scan reads the branch column by name, wherever it sits
 git worktree add -q -b dflow-unit/re-x .dflow/worktrees/re-x "$head"; ( cd .dflow/worktrees/re-x; echo X > app/x.py; git add -A; git commit -qm x )
 printf 'branch\tid\tpaths\tstate\tbase\ndflow-unit/re-x\tx\tapp/x.py\tdispatched\t%s\n' "$head" > .dflow/re.units.tsv
