@@ -44,7 +44,10 @@ order. In Codex the steps are the same with the tools in
    `.gitignore` will scan them: check that each check command skips it (as
    for `.dflow/` in the frame) before dispatch. Fill `.dflow/<slug>.units.tsv`: `id deps paths
    state base agent branch dispatched_at tries landed`; you are its only
-   writer. Then `parallel.sh overlap <slug>`; fix the split until it passes.
+   writer. `overlap` needs the manifest `.dflow/<slug>.md` with an `allow:`
+   line (and `protect:`, or `protect: -` for none); an attended parallel
+   run without one writes a short one first (slug, branch, base, allow,
+   protect). Then `parallel.sh overlap <slug>`; fix the split until it passes.
 2. **Dispatch** every ready unit (its deps landed): write its brief from
    `references/unit-brief.md`, set `base` to the current HEAD, `state
    dispatched`, `dispatched_at`, then start background subagents in one

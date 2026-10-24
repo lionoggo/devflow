@@ -191,10 +191,12 @@ tree is clean, and the first step on resume.
 
 A 多线 run, before the `pause` row: dispatch nothing new, collect once,
 then stop every running line by the stop protocol in `playbooks/lines.md`
-and confirm each stop. A stop that cannot be confirmed: `state=stop-unconfirmed`,
-a `blocked` row, and the line named in the reply. Only then log `pause` and
-release the lease; a lease released while a line may still write is not a
-pause.
+and confirm each stop. When every stop is confirmed, log `pause` and
+release the lease. A stop that cannot be confirmed: `state=stop-unconfirmed`,
+a `blocked` row, notify, and keep the lease: do not log `pause` and do not
+release it, since a line may still write. Reply naming the line and what
+would confirm its stop (the process gone, the user closing the window);
+pause only after that.
 
 ## Pickup (a new session)
 
@@ -220,7 +222,10 @@ pause.
 A 多线 run first closes its lines, in this order: dispatch nothing new;
 collect every delivery and land what is verified; stop each line still
 running by the stop protocol and confirm it; bring every attempt to an end
-state (landed, dead, stopped, or `stop-unconfirmed` with a `blocked` row);
+state (landed, done, dead, or stopped). A line left `stop-unconfirmed` is not
+an end state: log a `blocked` row, notify, keep the lease, and stop here
+without steps 1–10; reply naming the line and what would confirm its stop,
+and close only after that.
 `lines.sh lock show` each resource in `standing.md`, none naming this
 slug; then step 7 of **Steps** in `playbooks/lines.md` (shared-file line,
 cleanup). The steps below follow, with step 7 changed as it says; the lease

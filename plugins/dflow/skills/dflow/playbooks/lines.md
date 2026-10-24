@@ -69,8 +69,8 @@ limit, but does not stop it; `stop` prints `not stopped: …`.
 ## Steps
 
 1. **Frame.** Write the done condition as a count ("12 lines landed, each
-   with a pass in the ledger at its source SHA and a `<source sha> -> <landed
-   sha>` row in the log"), the number of lines, and the time budget. If one
+   with a pass in the ledger at its source SHA and a `commit <landed sha> from
+   <source sha>` row in the log"), the number of lines, and the time budget. If one
    agent could finish it inside the budget, stop here and use the normal
    playbook (实施, or 并行 inside it). Present the frame once; reversible
    prep goes on without waiting. Overnight or longer than about an hour:
@@ -81,8 +81,8 @@ limit, but does not stop it; `stop` prints `not stopped: …`.
    `slug`, `base`, `deadline` (the time budget as an absolute UTC time),
    `allow` and `protect`, then the goal and the acceptance in prose. An
    attended run writes it too: recovery rereads it, and `parallel.sh
-   overlap` checks `allow` and `protect` only when it exists. No manifest,
-   no dispatch. Then `$S/scripts/parallel.sh prepare <slug>` (clean tree,
+   overlap` refuses to run without it or without `allow` (`protect: -`
+   means nothing is protected). No manifest, no dispatch. Then `$S/scripts/parallel.sh prepare <slug>` (clean tree,
    as in `references/parallel.md`), then `$S/scripts/lines.sh init <slug>`: it
    creates `.dflow/<slug>/` with `ledger.tsv` and an empty `standing.md`, and
    pads an old 10-column table with `carrier model attempt brief report
@@ -237,7 +237,8 @@ its holder process is gone. The ledger's write lock
   or the matching visible command); never rely on the default, which is
   picked against the main session's host, not against the worker.
 - A verifier line is a line of its own: id `v-<id>`, a row in the table
-  with `paths=` empty and `base=<the SHA it verifies>`, then `parallel.sh
+  with `paths=-` (writes nothing; overlap and scope treat it so) and
+  `base=<the SHA it verifies>`, then `parallel.sh
   worktree <slug> v-<id>` and its printed branch in `branch`, so cleanup
   does not take it for an orphan. Its brief is read-only: it runs the
   behavior or the tests in that worktree, writes nothing in the repo, and
@@ -253,7 +254,9 @@ its holder process is gone. The ledger's write lock
   is ignored, so it neither passes nor overrides a behavior or test pass. Only
   when there is no such row does a `self` pass count, and only when the
   line's brief (its `brief` column, or `.dflow/<slug>/briefs/<id>-<attempt>.md`)
-  says 单命令验证 and the evidence starts with `single-command:`. A self
+  has its own line `验证     单命令验证：<命令>` (a mention elsewhere, or
+  "禁止单命令验证", does not count) and the evidence starts with
+  `single-command:`. A self
   row added after a verifier's fail never turns it into a pass.
 - Verification failed: never re-verify the same SHA as it is. Dispatch a fix
   line (a new attempt of the same line, the failure in its brief); its new
@@ -282,9 +285,10 @@ One line at a time, in dependency order:
    `SKILL.md`.
 6. Pass: `git add` only the line's paths, commit once, `lines.sh line set
    <slug> <id> state=landed landed=<new sha>`.
-7. Log a row with `<sha> -> <new sha>` in its evidence. This row and the
-   ledger's pass at `<sha>` together count the line toward the done
-   condition.
+7. Log a row whose evidence is `commit <new sha> from <sha>` (the
+   `commit <sha>` form is what `run-state.sh check` reads, so an unattended
+   round does not flag the landing as unlogged). This row and the ledger's
+   pass at `<sha>` together count the line toward the done condition.
 8. Any failure from step 4 on: `parallel.sh unland <slug> <id>`, then a fix
    line as in **Verification**.
 
@@ -301,7 +305,13 @@ copied from reports. Blockers and the workers' own calls reach the board
 only through those rows. To look without writing anything (进展, or any
 read from outside the run), use `lines.sh status <slug> --print` and
 `agent.sh peek <slug> <id> <attempt>`: no file, no snapshot, no lock, no
-signal.
+signal. `running (identity unverified)` from `peek` or `wait` means the
+process is alive but cannot be proven to be this attempt (no `ps`, or its
+record lacks the identity): treat it as running, never as ended, and never
+stop or restart it; when it lasts past the time box, mark the line
+`stop-unconfirmed` and ask the user. The board's 验收 column is the
+effective verdict (what `ledger check` decides); "原始最新" is only the last
+raw ledger row.
 
 ## Rounds (as the way 无人值守 runs)
 
