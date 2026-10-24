@@ -50,7 +50,7 @@
 #   lines.sh lock release <resource> <token>
 #                                         released only with the holder's token. Acquire, takeover and
 #                                         release each run whole under one transaction (a flock on
-#                                         <lock dir>.txn, dropped by the kernel if its holder dies; waited
+#                                         .txn/<name> beside the lock dir, dropped by the kernel if its holder dies; waited
 #                                         for up to DFLOW_LOCK_TXN_WAIT seconds, default 5, else refused)
 #   lines.sh lock show <resource>
 #                                         machine-wide resource lock at
@@ -91,12 +91,14 @@ lk_install() { # <dir> <attempt> <pid> <token>: fails when <dir> exists
     rm -rf "$tmp"; return 1
 }
 # Every acquire, takeover and release of <dir> runs whole inside one transaction: an exclusive flock on
-# the file <dir>.txn, held on fd 9 of this shell. Nobody can see or take the lock while another call is
+# the file .txn/<name> next to <dir> (a lock or resource name never starts with ".", so no name can
+# collide with it), held on fd 9 of this shell. Nobody can see or take the lock while another call is
 # between moving it aside, checking it, and putting it back or installing a new holder. The kernel
 # drops the flock when its holder dies, so a dead holder never blocks the next call. A call that cannot
 # get the transaction within DFLOW_LOCK_TXN_WAIT seconds (default 5) is refused, and touches nothing.
 txn_enter() { # <dir>
-    exec 9>>"$1.txn" || return 1
+    local t; t="$(dirname "$1")/.txn"; mkdir -p "$t" || return 1
+    exec 9>>"$t/$(basename "$1")" || return 1
     python3 -I -c 'import fcntl, sys, time
 end = time.time() + float(sys.argv[1])
 while True:
@@ -113,7 +115,7 @@ lk_acquire() { # <dir> <attempt> <pid>: 0 held by the caller, 1 refused
     local tok rc; tok=$(token); LK_TOKEN=""
     [ -n "$tok" ] || { LK_MSG="FAIL cannot read /dev/urandom for a token"; return 1; }
     mkdir -p "$(dirname "$1")" || { LK_MSG="FAIL cannot create $(dirname "$1")"; return 1; }
-    txn_enter "$1" || { LK_MSG="FAIL $1 is busy (another acquire or release holds $1.txn); retry"; return 1; }
+    txn_enter "$1" || { LK_MSG="FAIL $1 is busy (another acquire or release holds its .txn file); retry"; return 1; }
     lk_acquire_txn "$1" "$2" "$3" "$tok"; rc=$?
     txn_leave; return $rc
 }
@@ -134,7 +136,7 @@ lk_acquire_txn() { # <dir> <attempt> <pid> <token>, inside the transaction
 lk_release() { # <dir> <token>
     local rc
     [ -d "$1" ] || { LK_MSG="ok not held"; return 0; }
-    txn_enter "$1" || { LK_MSG="FAIL $1 is busy (another acquire or release holds $1.txn); not released, retry"; return 1; }
+    txn_enter "$1" || { LK_MSG="FAIL $1 is busy (another acquire or release holds its .txn file); not released, retry"; return 1; }
     lk_release_txn "$1" "$2"; rc=$?
     txn_leave; return $rc
 }

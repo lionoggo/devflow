@@ -214,7 +214,7 @@ printf 'attempt: demo/a/1\npid: %s\ncommand: sleep 60\nsince: 2026-10-24T00:00:0
 : > "$t/won"; rp=()
 for i in 1 2 3 4 5 6 7 8; do (cd "$t/wt$(( i % 2 + 1 ))" && "$ln" lock acquire gui "demo/t$i/1" "$p2" >/dev/null 2>&1 && echo "demo/t$i/1" >> "$t/won") & rp+=($!); done; wait "${rp[@]}"
 [ "$(wc -l < "$t/won" | tr -d ' ')" = 1 ] && grep -qx "attempt: $(cat "$t/won")" "$DFLOW_LOCK_DIR/gui/holder" && ok || bad "concurrent takeovers: winners $(tr '\n' ' ' < "$t/won"); holder $(cat "$DFLOW_LOCK_DIR/gui/holder")"
-[ -z "$(ls -d "$DFLOW_LOCK_DIR"/gui.* 2>/dev/null | grep -v '/gui\.txn$')" ] && ok || bad "takeover left $(ls -d "$DFLOW_LOCK_DIR"/gui.*)"
+[ -z "$(ls -d "$DFLOW_LOCK_DIR"/gui.* 2>/dev/null | cat)" ] && ok || bad "takeover left $(ls -d "$DFLOW_LOCK_DIR"/gui.*)"
 kill "$p1" "$p2" 2>/dev/null
 # R2: acquire, takeover and release are one transaction each. A release is paused (by a python3
 # stand-in around its rename) before and after it moves the lock aside; meanwhile its holder dies, a
@@ -248,14 +248,21 @@ inwin=""; for w in b c; do [ "$(cat "$t/$w.rc" 2>/dev/null)" = 0 ] && inwin="$in
 touch "$pz/go2"; wait "$rel" "$bp" "$cq"
 won=""; for w in b c; do [ "$(cat "$t/$w.rc")" = 0 ] && won="$won $w"; done
 [ "$won" = " b" ] || [ "$won" = " c" ] && grep -qx "attempt: demo/${won# }/1" "$DFLOW_LOCK_DIR/gui3/holder" && grep -qx "token: $(cat "$t/${won# }.tok")" "$DFLOW_LOCK_DIR/gui3/holder" && ok || bad "after the release: winners$won; holder $(cat "$DFLOW_LOCK_DIR/gui3/holder" 2>&1); release $(cat "$t/rel.out")"
-[ -z "$(ls -d "$DFLOW_LOCK_DIR"/gui3.* 2>/dev/null | grep -v '/gui3\.txn$')" ] && ok || bad "a moved-aside lock was left: $(ls -d "$DFLOW_LOCK_DIR"/gui3.*)"
+[ -z "$(ls -d "$DFLOW_LOCK_DIR"/gui3.* 2>/dev/null | cat)" ] && ok || bad "a moved-aside lock was left: $(ls -d "$DFLOW_LOCK_DIR"/gui3.*)"
 grep -q "^ok released" "$t/rel.out" && ok || bad "the paused release: $(cat "$t/rel.out")"
 # a transaction whose holder died does not block: the kernel drops the flock with its process
-python3 -I -c 'import fcntl, os, sys; fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_APPEND); fcntl.flock(fd, fcntl.LOCK_EX); os._exit(0)' "$DFLOW_LOCK_DIR/gui4.txn"
+mkdir -p "$DFLOW_LOCK_DIR/.txn"
+python3 -I -c 'import fcntl, os, sys; fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_APPEND); fcntl.flock(fd, fcntl.LOCK_EX); os._exit(0)' "$DFLOW_LOCK_DIR/.txn/gui4"
 out=$(DFLOW_LOCK_TXN_WAIT=2 "$ln" lock acquire gui4 demo/b/1 "$pb" 2>&1); [ $? = 0 ] && ok || bad "a dead transaction holder blocked the lock: $out"
 # while a live process holds the transaction, an acquire waits and is then refused, touching nothing
-python3 -I -c 'import fcntl, os, sys, time; fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_APPEND); fcntl.flock(fd, fcntl.LOCK_EX); time.sleep(30)' "$DFLOW_LOCK_DIR/gui5.txn" & pids+=($!); sleep 0.5
+python3 -I -c 'import fcntl, os, sys, time; fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_APPEND); fcntl.flock(fd, fcntl.LOCK_EX); time.sleep(30)' "$DFLOW_LOCK_DIR/.txn/gui5" & pids+=($!); sleep 0.5
 out=$(DFLOW_LOCK_TXN_WAIT=1 "$ln" lock acquire gui5 demo/b/1 "$pb" 2>&1); [ $? = 1 ] && echo "$out" | grep -q busy && [ ! -e "$DFLOW_LOCK_DIR/gui5" ] && ok || bad "busy transaction: $out"
+# a resource named like another's transaction file never collides with it, in either order
+for r in "gui6 gui6.txn" "gui7.txn gui7"; do set -- $r
+    t1=$("$ln" lock acquire "$1" demo/b/1 "$pb" 2>/dev/null) && "$ln" lock release "$1" "$t1" >/dev/null &&
+    t2=$("$ln" lock acquire "$2" demo/b/1 "$pb" 2>/dev/null) && "$ln" lock release "$2" "$t2" >/dev/null &&
+    t3=$("$ln" lock acquire "$1" demo/b/1 "$pb" 2>/dev/null) && "$ln" lock release "$1" "$t3" >/dev/null && ok || bad "resources $1 and $2 collide"
+done
 kill "$pb" "$pc" 2>/dev/null
 
 expect 2 "usage" "$ln"
