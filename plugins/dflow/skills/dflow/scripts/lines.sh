@@ -91,8 +91,8 @@ lk_install() { # <dir> <attempt> <pid> <token>: fails when <dir> exists
     rm -rf "$tmp"; return 1
 }
 # Every acquire, takeover and release of <dir> runs whole inside one transaction: an exclusive flock on
-# the file .txn/<name> next to <dir> (a lock or resource name never starts with ".", so no name can
-# collide with it), held on fd 9 of this shell. Nobody can see or take the lock while another call is
+# the file .txn/<name> next to <dir> (a resource name never starts with ".", so no resource can collide
+# with it; the ledger's own lock is .lock, which only it uses), held on fd 9 of this shell. Nobody can see or take the lock while another call is
 # between moving it aside, checking it, and putting it back or installing a new holder. The kernel
 # drops the flock when its holder dies, so a dead holder never blocks the next call. A call that cannot
 # get the transaction within DFLOW_LOCK_TXN_WAIT seconds (default 5) is refused, and touches nothing.
