@@ -42,8 +42,10 @@ Do not load any `devflow-*` skill inside a dflow session.
 is a brief from a 多线 or 并行 coordinator. Skip steps 1–3: run only that
 brief, without matching a playbook, handing off, starting 无人值守, or
 switching branches beyond the brief's own 准备 step. At the time box, deliver
-partial results. End by writing the receipt the brief names
-(`playbooks/lines.md` **Receipts and done**).
+partial results. A brief with a 回执 field (多线): end by publishing that
+receipt as it says, the full report to `.tmp` first, then moved into place
+(`playbooks/lines.md` **Receipts and done**). Without one (并行): end with
+the brief's 报告 as your final message.
 
 **Host.** Every playbook runs in Claude Code and in Codex. The playbooks
 name Claude Code's tools; in Codex, use the matching row of

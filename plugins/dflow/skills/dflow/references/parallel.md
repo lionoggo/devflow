@@ -51,7 +51,7 @@ order. In Codex the steps are the same with the tools in
    message: Agent with `isolation: "worktree"`, `run_in_background: true`,
    model `sonnet`. Codex: per unit, `parallel.sh worktree <slug> <id>`, set
    `branch` to the branch it prints, then `spawn_agent` (`fork_context:
-   false`) with the brief, its 准备 line replaced by "工作目录 <path>：每条命令都在这里运行，只在这里提交";
+   false`) with the brief, its 准备 the working-directory form in `references/unit-brief.md` (no `git switch`);
    record the agent id. At most 3 running; refill as each finishes. Past about 70%
    of an unattended deadline, dispatch nothing new.
 3. **On each completion** (one at a time; any wake-up in an unattended run is
@@ -64,11 +64,16 @@ order. In Codex the steps are the same with the tools in
    2. `parallel.sh scope <slug> <id> <sha>`: ancestor check and path check
       on that SHA. A failure sends the unit back.
    3. `parallel.sh land <slug> <id> <sha>`: `base..<sha>`, uncommitted, in
-      the main tree, even if the branch has moved on since the report (it
-      prints a note then; later commits are not landed). A conflict aborts
-      cleanly and sends the unit back.
+      the main tree. It refuses when the branch head is no longer that SHA
+      (the branch moved after the report): the unit is not done as
+      reported; read its final report again, or send it back. A conflict
+      aborts cleanly and sends the unit back.
    4. In the main tree run the unit's checks, every finished stage's
-      conditions, and the protected checks. Pass: `git add` only the unit's
+      conditions, and the protected checks, leaving no files behind
+      (`PYTHONDONTWRITEBYTECODE=1`, output outside the repo): an untracked
+      file makes the next `land` refuse. Untracked files these checks
+      produced are listed, then deleted; any other goes to the user first,
+      per **Ask first** in `SKILL.md`. Pass: `git add` only the unit's
       paths, commit once, set `landed <sha>`, log it. Fail:
       `parallel.sh unland <slug> <id>`, send the unit back.
    5. Sent back: `tries`+1, `base` set to the new HEAD, a fresh subagent
@@ -87,10 +92,15 @@ order. In Codex the steps are the same with the tools in
    6. No completion after twice the brief's time box: treat it as in a
       pickup (below) and count a try.
 4. **Shared files** after every unit landed, as a normal unit.
-5. `parallel.sh cleanup <slug>` (Codex: `close_agent` each worker first): removes landed (and empty) units' worktrees
-   and branches; keeps and lists units with unlanded commits, uncommitted
-   changes, untracked files, or ignored files; never touches worktrees
-   outside the table. Ignored files are listed, never removed by default. Add
+5. `parallel.sh cleanup <slug>` (Codex: `close_agent` each worker first): removes the worktrees
+   and branches of units in state `landed`, `done`, `dead`, `stopped`, or
+   `planned` (never dispatched); keeps and lists units in any other state
+   (`dispatched`, `stop-unconfirmed`, unknown), landed units whose branch has
+   commits past what landed (the source SHA comes from `.dflow/<slug>.landed`,
+   which `parallel.sh land` appends to; a unit marked landed by hand with no
+   record there is kept), and units with uncommitted changes, untracked
+   files, or ignored files; never touches worktrees outside the table. Set
+   each finished unit's state before running it. Ignored files are listed, never removed by default. Add
    `--ignored-ok` only when every listed path is output this task's own
    commands produced (build output, caches), and name those paths in the
    reply; anything else (`.env`, samples, logs you did not write) goes to the

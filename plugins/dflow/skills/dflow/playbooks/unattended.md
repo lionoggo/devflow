@@ -189,6 +189,13 @@ one `wip:` commit (the one exception to committing only checked units). Log
 (Codex: `update_goal` `paused`), `run-state.sh release <slug>`. Reply: where it stands, commits, whether the
 tree is clean, and the first step on resume.
 
+A 多线 run, before the `pause` row: dispatch nothing new, collect once,
+then stop every running line by the stop protocol in `playbooks/lines.md`
+and confirm each stop. A stop that cannot be confirmed: `state=stop-unconfirmed`,
+a `blocked` row, and the line named in the reply. Only then log `pause` and
+release the lease; a lease released while a line may still write is not a
+pause.
+
 ## Pickup (a new session)
 
 1. `run-state.sh claim <slug>`. Refused because another agent process
@@ -200,13 +207,24 @@ tree is clean, and the first step on resume.
    the manifest's deadline.
 5. A run that paused on a `wip:` commit: verify it or revert it first. A
    parallel run: handle each `dispatched` unit per the Pickup section of
-   `references/parallel.md`.
+   `references/parallel.md`. A 多线 run: run **Recovery** in
+   `playbooks/lines.md` instead; a branch with commits is never done
+   because of them, only a receipt delivers.
 6. Do not redo committed units; find the next step from the log and
    `git log`.
 7. `run-state.sh caffeinate <slug>`, start the loop as in **Frame** step 6,
    and run a round.
 
 ## Close
+
+A 多线 run first closes its lines, in this order: dispatch nothing new;
+collect every delivery and land what is verified; stop each line still
+running by the stop protocol and confirm it; bring every attempt to an end
+state (landed, dead, stopped, or `stop-unconfirmed` with a `blocked` row);
+`lines.sh lock show` each resource in `standing.md`, none naming this
+slug; then step 7 of **Steps** in `playbooks/lines.md` (shared-file line,
+cleanup). The steps below follow, with step 7 changed as it says; the lease
+is released only at step 10.
 
 1. Uncommitted changes outside `.dflow/`: report them, do not clean.
 2. Commit first, then rerun every condition on that HEAD; keep the real
@@ -247,7 +265,9 @@ tree is clean, and the first step on resume.
    need no new authority in one batch, with the failure path the finding
    names checked, not only the old tests. Skip the batch when the deadline
    leaves no time for its checks and step 8. Log each fix as `side`, then
-   redo steps 2, 4, and 5.
+   redo steps 2, 4, and 5. A 多线 run does not fix in the main session:
+   the batch goes to one fix line, verified and landed per
+   `playbooks/lines.md`, and its attempt reaches an end state before step 8.
 8. Review the fix once: if anything was committed after the review head,
    give the reviewer of step 6, run the same way, the first review, `git log -p <review
    head>..HEAD`, and the current code around each touched path; ask whether
