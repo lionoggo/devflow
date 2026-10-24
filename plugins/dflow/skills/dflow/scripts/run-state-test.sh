@@ -106,6 +106,23 @@ echo e >> src/a.py; git commit -qam four; u1=$(git rev-parse HEAD); echo f >> sr
 out=$("$rs" check demo); [ $? = 3 ] && [ "$(echo "$out" | grep '^UNLOGGED')" = "UNLOGGED $u1" ] && ok || bad "unlogged commit before a logged one: $out"
 cp "$t/log" .dflow/demo.tsv; git reset -q --hard "$c1"
 
+# R7: a 多线 land (parallel.sh land of the verified source commit, then the commit on the run branch)
+# logged as "commit <new sha> from <source sha>" is a logged commit for the next round's check;
+# the bare mapping "<source> -> <new>" is not
+cp .dflow/demo.tsv "$t/log"
+git worktree add -q -b dflow-unit/demo-u "$t/wu" "$c1"
+( cd "$t/wu"; echo u > src/u.py; git add -A; git commit -qm "unit u" ); src=$(git -C "$t/wu" rev-parse HEAD)
+printf 'id\tdeps\tpaths\tstate\tbase\tagent\tbranch\tdispatched_at\ttries\tlanded\nu\t-\tsrc/u.py\tdispatched\t%s\t-\tdflow-unit/demo-u\t-\t0\t-\n' "$c1" > .dflow/demo.units.tsv
+expect 0 "land u at its verified sha" "$here/parallel.sh" land demo u "$src"
+git commit -qm "land u"; new=$(git rev-parse HEAD)
+"$here/log.sh" .dflow/demo.tsv round "落地 u" "来源已验收" "$src -> $new" ok
+out=$("$rs" check demo); [ $? = 3 ] && echo "$out" | grep -qx "UNLOGGED $new" && ok || bad "a bare mapping counted as logged: $out"
+"$here/log.sh" .dflow/demo.tsv round "落地 u" "来源已验收" "commit $new from $src" ok
+out=$("$rs" check demo); rc=$?
+[ $rc = 0 ] && ! echo "$out" | grep -q UNLOGGED && ok || bad "landed commit logged as commit <new> from <source>: $rc $out"
+cp "$t/log" .dflow/demo.tsv; git reset -q --hard "$c1"; rm -f .dflow/demo.units.tsv .dflow/demo.landed
+git worktree remove --force "$t/wu"; git branch -D -q dflow-unit/demo-u
+
 # wrong branch
 git checkout -qb other; expect 1 "wrong branch" "$rs" check demo; git checkout -q dflow/demo
 

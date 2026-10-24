@@ -8,23 +8,29 @@
 #   proc_start <out> <cmd...>    fork, setsid, run <cmd> with this call's stdin (redirect it from a
 #                                file), stdout and stderr to <out>; writes <out>.pid and, when <cmd>
 #                                ends, <out>.exit; prints the pid. Refused (return 1, nothing
-#                                overwritten) while the run recorded for <out> is alive (or alive and
-#                                unverifiable), or while another start for <out> holds <out>.starting
+#                                overwritten) while the run recorded for <out> is alive (or its pid is
+#                                alive and its identity unknown), or while another start for <out>
+#                                holds <out>.starting
 #   proc_wait <out> [secs] [limit]
 #                                wait up to <secs> (default 50) for the run to end; return 0
-#                                "ended exit <code>", 3 "running", 1 "ended lost" (no exit code and
-#                                no live process of this run on record) or "ended timeout" (over
-#                                <limit> seconds since start, default 1200; its process group is
-#                                stopped, or the line says it is still running or was not stopped)
-#   proc_peek <out>              look once, never signal: 0 "ended exit <code>", 3 "running", 1 "ended lost"
+#                                "ended exit <code>", 3 "running" or "running (identity unverified)",
+#                                1 "ended lost" (no exit code, and the recorded pid is gone or is
+#                                provably another process) or "ended timeout" (over <limit> seconds
+#                                since start, default 1200; its process group is stopped, or the line
+#                                says it is still running or was not stopped)
+#   proc_peek <out>              look once, never signal: 0 "ended exit <code>", 3 "running" or
+#                                "running (identity unverified)", 1 "ended lost"
 #   proc_stop <out>              stop the run's process group after the identity check and confirm it
 #                                is gone: return 0 "ok stopped" / "ok not running", or 1
 #                                "not stopped: <reason>" (nothing is signalled when the check fails)
 # <out>.pid: line 1 "<pid> <started>", then "lstart: <ps lstart>" and "command: <ps command>" of the
 # wrapper (`python3 -I - <out> ...`), read right after the fork. Identity: the pid leads its own
-# process group and its lstart and command equal the recorded ones exactly. A record without them
-# (older format) is not this run. Without ps (some sandboxes refuse it) identity cannot be checked:
-# a live pid counts as running, a timeout is only reported, and nothing is ever signalled.
+# process group and its lstart and command equal the recorded ones exactly. The identity is unknown
+# when the pid is alive but cannot be checked: no ps (some sandboxes refuse it), ps fails for that
+# pid, or the record lacks lstart or command (an older format, or a start without ps). An unknown
+# identity counts as running ("running (identity unverified)"): never restarted over, never reported
+# lost, never signalled, and a timeout is only reported. Only a pid that is gone (kill -0 fails) or
+# whose pgid, lstart or command differs from the record is not this run.
 # Times are wall-clock seconds.
 
 proc_host() {
@@ -50,12 +56,16 @@ _proc_load() { # sets _pp _ps _pl _pc (pid, started, lstart, command) from <out>
     case "$_pp:$_ps" in *[!0-9:]*|:*|*:) _pp=""; _ps="" ;; esac
     _canps=1; ps -o pid= -p $$ >/dev/null 2>&1 || _canps=0
 }
-_proc_id() { # 0 the recorded pid is this run, 1 it is not (or is gone), 2 alive but cannot be checked (no ps)
+_proc_id() { # 0 the recorded pid is this run, 1 it is gone or provably another process, 2 alive but unknown
+    local g l c
     [ -n "$_pp" ] && kill -0 "$_pp" 2>/dev/null || return 1
-    [ $_canps = 1 ] || return 2
-    [ -n "$_pl" ] && [ -n "$_pc" ] || return 1
-    [ "$(ps -o pgid= -p "$_pp" 2>/dev/null | tr -d ' ')" = "$_pp" ] || return 1
-    [ "$(_proc_ps lstart "$_pp")" = "$_pl" ] && [ "$(_proc_ps command "$_pp")" = "$_pc" ]
+    [ $_canps = 1 ] && [ -n "$_pl" ] && [ -n "$_pc" ] || return 2
+    g=$(ps -o pgid= -p "$_pp" 2>/dev/null | tr -d ' '); l=$(_proc_ps lstart "$_pp"); c=$(_proc_ps command "$_pp")
+    # a field ps did answer and that differs from the record is proof; a field it did not answer is not
+    { [ -n "$g" ] && [ "$g" != "$_pp" ]; } || { [ -n "$l" ] && [ "$l" != "$_pl" ]; } || { [ -n "$c" ] && [ "$c" != "$_pc" ]; } && return 1
+    [ -n "$g" ] && [ -n "$l" ] && [ -n "$c" ] && return 0
+    kill -0 "$_pp" 2>/dev/null && return 2   # ps could not answer for a live pid
+    return 1
 }
 _proc_group() { kill -0 -- -"$_pp" 2>/dev/null; }  # any process of the group left
 _proc_kill() { # TERM the group, then KILL; return 0 when the group is gone
@@ -73,7 +83,8 @@ proc_start() {
     _proc_load "$out"
     if [ ! -f "$out.exit" ]; then
         _proc_id; rc=$?
-        [ $rc = 1 ] || { rmdir "$out.starting"; echo "FAIL $out is still running as pid $_pp; not started again" >&2; return 1; }
+        [ $rc != 0 ] || { rmdir "$out.starting"; echo "FAIL $out is still running as pid $_pp; not started again" >&2; return 1; }
+        [ $rc != 2 ] || { rmdir "$out.starting"; echo "FAIL $out: pid $_pp is alive and cannot be checked as this run (identity unverified); not started again, nothing overwritten" >&2; return 1; }
     fi
     rm -f "$out.exit" "$out.pid"
     python3 -I - "$out" "$@" 3<&0 <<'PY'
@@ -130,13 +141,16 @@ proc_wait() {
         if _proc_kill; then echo "ended timeout"; else echo "ended timeout, still running $_pp"; fi
         return 1
     fi
-    echo "running"; return 3
+    [ $id = 0 ] && echo "running" || echo "running (identity unverified)"; return 3
 }
 
 proc_peek() {
     local out; out=$(proc_canon "$1"); _proc_load "$out"
     if [ -f "$out.exit" ]; then echo "ended exit $(cat "$out.exit")"; return 0; fi
-    _proc_id; [ $? = 1 ] && { echo "ended lost"; return 1; }
+    _proc_id; case $? in
+    1) echo "ended lost"; return 1 ;;
+    2) echo "running (identity unverified)"; return 3 ;;
+    esac
     echo "running"; return 3
 }
 
@@ -148,7 +162,7 @@ proc_stop() {
         echo "ok not running"; return 0
     fi
     _proc_id; id=$?
-    [ $id != 2 ] || { echo "not stopped: cannot check that $_pp is this run (no ps)"; return 1; }
+    [ $id != 2 ] || { echo "not stopped: cannot check that $_pp is this run (identity unverified)"; return 1; }
     [ $id = 0 ] || { echo "not stopped: pid $_pp is not this run (identity check failed)"; return 1; }
     if _proc_kill; then echo "ok stopped"; return 0; fi
     echo "not stopped: still running $_pp"; return 1

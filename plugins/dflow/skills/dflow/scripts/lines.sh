@@ -29,22 +29,29 @@
 #                                         the latest behavior/test/review row decides when there is one
 #                                         (a review pass never counts); only with none, the latest self
 #                                         row decides, and its pass counts only with evidence
-#                                         "single-command:..." and a brief for that attempt (the table's
-#                                         brief column, or <slug>/briefs/<id>-<attempt>.md) that says
-#                                         单命令验证. Otherwise "NOT-PASSED ..." and exit 2; a sha that
-#                                         names no single commit: exit 1
+#                                         "single-command:..." and the brief of that attempt (the table's
+#                                         brief column, or <slug>/briefs/<id>-<attempt>.md) whose first
+#                                         line is "dflow 线 <slug>/<id>/<attempt>" and which has a line
+#                                         "验证<blanks>单命令验证：<command>" (that line alone allows it;
+#                                         the word elsewhere does not). Otherwise "NOT-PASSED ..." and
+#                                         exit 2; a sha that names no single commit: exit 1
 #   lines.sh status <slug> [--print]      write <slug>/status.md and print "counts:", "changed:", "gates open:"
 #                                         (changed: lines whose shown fields differ from the last status).
 #                                         The board: per line state, carrier, model, attempt, last progress,
-#                                         receipt, verdict (verifier lines, ids "v-...", in their own
-#                                         table), open gates, and the latest decision rows of the log.
+#                                         receipt, verdict (the effective one on the delivered commit, as
+#                                         ledger check decides: pass, fail, blocked, or 未验), 原始最新 (the
+#                                         attempt's latest raw ledger row, not a verdict); verifier lines
+#                                         (ids "v-...", paths "-") in their own table; open gates, and the
+#                                         latest decision rows of the log.
 #                                         --print: print the board only; no file, no snapshot, no lock
 #   lines.sh lock acquire <resource> <slug>/<id>/<attempt> <pid>
 #                                         on success print one line, the holder's token (keep it; the
 #                                         same attempt and pid get the same token again); messages on stderr
 #   lines.sh lock release <resource> <token>
-#                                         released only with the holder's token (checked again after the
-#                                         lock directory is moved aside; a mismatch is put back)
+#                                         released only with the holder's token. Acquire, takeover and
+#                                         release each run whole under one transaction (a flock on
+#                                         <lock dir>.txn, dropped by the kernel if its holder dies; waited
+#                                         for up to DFLOW_LOCK_TXN_WAIT seconds, default 5, else refused)
 #   lines.sh lock show <resource>
 #                                         machine-wide resource lock at
 #                                         ${DFLOW_LOCK_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/dflow/locks}/<resource>/holder
@@ -83,42 +90,60 @@ lk_install() { # <dir> <attempt> <pid> <token>: fails when <dir> exists
     rename "$tmp" "$1" && return 0
     rm -rf "$tmp"; return 1
 }
+# Every acquire, takeover and release of <dir> runs whole inside one transaction: an exclusive flock on
+# the file <dir>.txn, held on fd 9 of this shell. Nobody can see or take the lock while another call is
+# between moving it aside, checking it, and putting it back or installing a new holder. The kernel
+# drops the flock when its holder dies, so a dead holder never blocks the next call. A call that cannot
+# get the transaction within DFLOW_LOCK_TXN_WAIT seconds (default 5) is refused, and touches nothing.
+txn_enter() { # <dir>
+    exec 9>>"$1.txn" || return 1
+    python3 -I -c 'import fcntl, sys, time
+end = time.time() + float(sys.argv[1])
+while True:
+    try:
+        fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB); sys.exit(0)
+    except OSError:
+        if time.time() > end: sys.exit(1)
+        time.sleep(0.02)' "${DFLOW_LOCK_TXN_WAIT:-5}" 2>/dev/null && return 0
+    exec 9>&-; return 1
+}
+txn_leave() { exec 9>&-; }
 # lk_acquire/lk_release print nothing: they set LK_MSG (one line) and, on a successful acquire, LK_TOKEN
 lk_acquire() { # <dir> <attempt> <pid>: 0 held by the caller, 1 refused
-    local dir=$1 snap ha hp hc ht tk="$1.takeover" tok; tok=$(token); LK_TOKEN=""
+    local tok rc; tok=$(token); LK_TOKEN=""
     [ -n "$tok" ] || { LK_MSG="FAIL cannot read /dev/urandom for a token"; return 1; }
-    mkdir -p "$(dirname "$dir")" || { LK_MSG="FAIL cannot create $(dirname "$dir")"; return 1; }
-    lk_install "$dir" "$2" "$3" "$tok" && { LK_TOKEN=$tok; LK_MSG="ok acquired $dir"; return 0; }
+    mkdir -p "$(dirname "$1")" || { LK_MSG="FAIL cannot create $(dirname "$1")"; return 1; }
+    txn_enter "$1" || { LK_MSG="FAIL $1 is busy (another acquire or release holds $1.txn); retry"; return 1; }
+    lk_acquire_txn "$1" "$2" "$3" "$tok"; rc=$?
+    txn_leave; return $rc
+}
+lk_acquire_txn() { # <dir> <attempt> <pid> <token>, inside the transaction
+    local dir=$1 ha hp hc ht
+    lk_install "$dir" "$2" "$3" "$4" && { LK_TOKEN=$4; LK_MSG="ok acquired $dir"; return 0; }
     [ -f "$dir/holder" ] || [ $(( $(date +%s) - $(mtime "$dir") )) -gt 10 ] || { LK_MSG="FAIL $dir is being created; retry"; return 1; }
-    snap=$(cat "$dir/holder" 2>/dev/null); ha=$(hfield "$dir/holder" attempt); hp=$(hfield "$dir/holder" pid)
+    ha=$(hfield "$dir/holder" attempt); hp=$(hfield "$dir/holder" pid)
     hc=$(hfield "$dir/holder" command); ht=$(hfield "$dir/holder" token)
     if [ "$ha" = "$2" ] && [ "$hp" = "$3" ] && [ -n "$ht" ]; then LK_TOKEN=$ht; LK_MSG="ok already held by $2"; return 0; fi
     if alive "$hp" "$hc"; then LK_MSG="FAIL held by ${ha:-?} (pid $hp is alive)"; return 1; fi
-    # The holder is gone. Takers queue on <dir>.takeover; then rename, and check the renamed holder is
-    # still the one judged gone (a newer holder is put back and the takeover refused).
-    if ! mkdir "$tk" 2>/dev/null; then
-        [ $(( $(date +%s) - $(mtime "$tk") )) -gt 10 ] && rename "$tk" "$tk.dead.$$" && rm -rf "$tk.dead.$$"
-        mkdir "$tk" 2>/dev/null || { LK_MSG="FAIL another takeover of $dir is in progress; retry"; return 1; }
-    fi
-    if [ "$(cat "$dir/holder" 2>/dev/null)" != "$snap" ]; then rmdir "$tk"; LK_MSG="FAIL holder of $dir changed; retry"; return 1; fi
-    if ! rename "$dir" "$dir.stale.$$"; then rmdir "$tk"; LK_MSG="FAIL lost the race for $dir; retry"; return 1; fi
-    if [ "$(cat "$dir.stale.$$/holder" 2>/dev/null)" != "$snap" ]; then
-        rename "$dir.stale.$$" "$dir" || echo "FAIL could not put back $dir (left at $dir.stale.$$)" >&2
-        rmdir "$tk"; LK_MSG="FAIL holder of $dir changed during takeover; put back, not taken"; return 1
-    fi
+    # the holder is gone: move its lock aside and install the caller (no other call runs meanwhile)
+    rename "$dir" "$dir.stale.$$" || { LK_MSG="FAIL could not move the stale lock $dir aside"; return 1; }
     rm -rf "$dir.stale.$$"
-    if ! lk_install "$dir" "$2" "$3" "$tok"; then rmdir "$tk"; LK_MSG="FAIL lost the race for $dir; retry"; return 1; fi
-    rmdir "$tk"; LK_TOKEN=$tok; LK_MSG="ok took over $dir from ${ha:-?} (pid ${hp:-?} gone)"; return 0
+    lk_install "$dir" "$2" "$3" "$4" || { LK_MSG="FAIL could not install the new holder of $dir"; return 1; }
+    LK_TOKEN=$4; LK_MSG="ok took over $dir from ${ha:-?} (pid ${hp:-?} gone)"; return 0
 }
 lk_release() { # <dir> <token>
+    local rc
     [ -d "$1" ] || { LK_MSG="ok not held"; return 0; }
-    local ht ha; ht=$(hfield "$1/holder" token); ha=$(hfield "$1/holder" attempt)
+    txn_enter "$1" || { LK_MSG="FAIL $1 is busy (another acquire or release holds $1.txn); not released, retry"; return 1; }
+    lk_release_txn "$1" "$2"; rc=$?
+    txn_leave; return $rc
+}
+lk_release_txn() { # <dir> <token>, inside the transaction
+    local ht ha
+    [ -d "$1" ] || { LK_MSG="ok not held"; return 0; }
+    ht=$(hfield "$1/holder" token); ha=$(hfield "$1/holder" attempt)
     [ -n "$2" ] && [ "$ht" = "$2" ] || { LK_MSG="FAIL $1 is held by ${ha:-?} under another token; not released"; return 1; }
-    rename "$1" "$1.rel.$$" || { LK_MSG="FAIL $1 moved while releasing; not released"; return 1; }
-    if [ "$(hfield "$1.rel.$$/holder" token)" != "$2" ]; then # a takeover installed a new holder in between
-        rename "$1.rel.$$" "$1" || echo "FAIL could not put back $1 (left at $1.rel.$$)" >&2
-        LK_MSG="FAIL holder of $1 changed while releasing; put back, not released"; return 1
-    fi
+    rename "$1" "$1.rel.$$" || { LK_MSG="FAIL could not move $1 aside; not released"; return 1; }
     rm -rf "$1.rel.$$"; LK_MSG="ok released $1"
 }
 
@@ -189,7 +214,7 @@ brief_of() { # <id> <attempt>: the brief file of that attempt
     [ -f "$table" ] && [ "$(tcol "$1" attempt)" = "$2" ] && b=$(tcol "$1" brief)
     [ -n "$b" ] && [ "$b" != - ] && echo "$b" || echo "$d/briefs/$1-$2.md"
 }
-verdict() { # <id> <full sha>: "ok" or the reason
+verdict_raw() { # <id> <full sha>: "<effective>\t<reason>"; effective: pass fail blocked none
     local v b
     v=$(awk -F'\t' -v id="$1" -v s="$2" '
         NR == 1 { for (i = 1; i <= NF; i++) h[$i] = i; next }
@@ -199,48 +224,59 @@ verdict() { # <id> <full sha>: "ok" or the reason
         $h["evidence_type"] != "self" { nr = $h["result"]; nt = $h["evidence_type"]; nv = $h["verifier"]; next }
         { sr = $h["result"]; sv = $h["verifier"]; sa = $h["attempt"]; se = (index($h["evidence"], "single-command:") == 1) }
         END { if (nr != "") {
-                  if (nr == "pass" && (nt == "behavior" || nt == "test")) print "ok"
-                  else if (nr == "pass") print "latest verdict on this sha is a " nt " pass, which never counts"
-                  else print "latest verdict on this sha is " nr " (" nt ", " nv ")" }
+                  if (nr == "pass" && (nt == "behavior" || nt == "test")) print "pass\tok"
+                  else if (nr == "pass") print "none\tlatest verdict on this sha is a " nt " pass, which never counts"
+                  else print nr "\tlatest verdict on this sha is " nr " (" nt ", " nv ")" }
               else if (sr != "") {
-                  if (sr != "pass") print "latest verdict on this sha is " sr " (self, " sv ")"
-                  else if (!se) print "only a self pass without single-command: evidence on this sha"
-                  else print "SELF " sa }
-              else if (other != "") print "no verdict on this sha; pass recorded on" other " only"
-              else print "no verdict on this sha" }' "$ledger")
+                  if (sr != "pass") print sr "\tlatest verdict on this sha is " sr " (self, " sv ")"
+                  else if (!se) print "none\tonly a self pass without single-command: evidence on this sha"
+                  else print "SELF\t" sa }
+              else if (other != "") print "none\tno verdict on this sha; pass recorded on" other " only"
+              else print "none\tno verdict on this sha" }' "$ledger")
     case $v in
-    "SELF "*)
-        b=$(brief_of "$1" "${v#SELF }")
-        if grep -qF '单命令验证' "$b" 2>/dev/null; then echo ok
-        else echo "only a self pass on this sha, and brief $b does not allow it (no 单命令验证)"; fi ;;
-    *) echo "$v" ;;
+    SELF$'\t'*)
+        b=$(brief_of "$1" "${v#SELF?}")
+        if self_allowed "$b" "$1" "${v#SELF?}"; then printf 'pass\tok\n'
+        else printf 'none\tonly a self pass on this sha, and brief %s does not allow it (it needs its first line "dflow 线 %s/%s/%s" and a line "验证 单命令验证：<命令>")\n' "$b" "$slug" "$1" "${v#SELF?}"; fi ;;
+    *) printf '%s\n' "$v" ;;
     esac
 }
-line_rows() { # one row per line, tab-separated: id state carrier model attempt progress_at receipt verdict
-    local id st att rc vd r full
+self_allowed() { # <brief> <id> <attempt>: the brief is that attempt's, and has the line "验证<blanks>单命令验证：<command>"
+    [ -f "$1" ] || return 1
+    [ "$(head -1 "$1" | tr -d '\r')" = "dflow 线 $slug/$2/$3" ] || return 1
+    tr -d '\r' < "$1" | LC_ALL=C grep -Eq '^验证[[:space:]]+单命令验证：[[:space:]]*[^[:space:]]'
+}
+verdict() { local v; v=$(verdict_raw "$@"); printf '%s\n' "${v#*$'\t'}"; }    # "ok" or the reason
+effective() { local v; v=$(verdict_raw "$@"); printf '%s\n' "${v%%$'\t'*}"; } # pass fail blocked none
+line_rows() { # one row per line, tab-separated: id state carrier model attempt progress_at receipt verdict raw
+    local id st att rc vd raw r ref full e
     for id in $(ids); do
-        st=$(tcol "$id" state); att=$(tcol "$id" attempt); rc="-"; vd="-"
+        st=$(tcol "$id" state); att=$(tcol "$id" attempt); rc="-"; vd="未验"; raw="-"; ref=""
         if valid "$N_RE" "$att"; then
-            if r=$(receipt_of "$id" "$att"); then rc=$r
-                full=$(resolve "${r#* }") && [ "$(verdict "$id" "$full")" = ok ] && vd="pass @${r#* }"
-            else rc="无"; fi
+            if r=$(receipt_of "$id" "$att"); then rc=$r; ref=${r#* }; else rc="无"; fi
+            # the verdict column is the effective verdict (as ledger check decides it) on the delivered
+            # commit: the receipt's sha, else the sha of this attempt's latest ledger row
+            full=$(resolve "$ref") || { full=$(awk -F'\t' -v id="$id" -v a="$att" 'NR > 1 && $1 == id && $2 == a { s = $3 } END { print s }' "$ledger"); ref=${full:0:12}; }
+            if [ -n "$full" ]; then
+                e=$(effective "$id" "$full")
+                [ "$e" = none ] || vd="$e @$ref"
+            fi
+            raw=$(awk -F'\t' -v id="$id" -v a="$att" 'NR > 1 && $1 == id && $2 == a { v = $4 " " $5 " @" substr($3, 1, 12) } END { print (v == "" ? "-" : v) }' "$ledger")
         fi
-        if [ "$vd" = - ]; then
-            vd=$(awk -F'\t' -v id="$id" -v a="$att" 'NR > 1 && $1 == id && $2 == a { v = $4 " " $5 " @" substr($3, 1, 12) } END { print (v == "" ? "-" : v) }' "$ledger")
-        fi
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$st" "$(tcol "$id" carrier)" "$(tcol "$id" model)" "$att" "$(tcol "$id" progress_at)" "$rc" "$vd"
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$st" "$(tcol "$id" carrier)" "$(tcol "$id" model)" "$att" "$(tcol "$id" progress_at)" "$rc" "$vd" "$raw"
     done
 }
 board() { # <rows from line_rows>: the board in Markdown; sets GATES_OPEN
     local rows=$1 ng=0 nd=0 ts q why gates dec
     md_table() { # <awk filter on the id>
-        echo "| 线 | 状态 | 载体 | 模型 | 尝试 | 最近进展 | 回执 | 验收 |"
-        echo "|---|---|---|---|---|---|---|---|"
-        printf '%s\n' "$rows" | awk -F'\t' "NF && $1"' { for (i = 1; i <= NF; i++) gsub(/\|/, "/", $i); printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5, $6, $7, $8 }'
+        echo "| 线 | 状态 | 载体 | 模型 | 尝试 | 最近进展 | 回执 | 验收 | 原始最新 |"
+        echo "|---|---|---|---|---|---|---|---|---|"
+        printf '%s\n' "$rows" | awk -F'\t' "NF && $1"' { for (i = 1; i <= NF; i++) gsub(/\|/, "/", $i); printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5, $6, $7, $8, $9 }'
     }
     echo "# 多线看板 $slug"
     echo
     echo "生成于 $(now)，取自单元表、ledger.tsv、回执和决策日志；进程和 git 状态以现场核对为准。"
+    echo "验收：交付提交上的有效结论（同 ledger check：pass、fail、blocked，无有效结论为未验）；原始最新：本尝试最后一条 ledger 原始记录，不是结论。"
     echo
     md_table '$1 !~ /^v-/'
     if printf '%s\n' "$rows" | grep -q '^v-'; then echo; echo "## 验收线"; echo; md_table '$1 ~ /^v-/'; fi

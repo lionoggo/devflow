@@ -24,6 +24,23 @@ sed -i '' '/^c	/d' .dflow/demo.units.tsv
 row d "tests/x.py" planned - -
 out=$("$ps" overlap demo); echo "$out" | grep -q "OUTSIDE-ALLOW d" && echo "$out" | grep -q "PROTECTED d" && ok || bad "allow/protect not checked: $out"
 sed -i '' '/^d	/d' .dflow/demo.units.tsv
+# R6: no manifest, or one without allow:, fails (it is not read as "nothing to check"); protect may be
+# left out, and "protect: -" means none
+cp .dflow/demo.md "$t/man"
+rm .dflow/demo.md
+out=$("$ps" overlap demo); [ $? = 1 ] && echo "$out" | grep -q "no manifest" && ok || bad "overlap without a manifest: $out"
+printf 'slug: demo\nbase: %s\nprotect: tests/*\n\n# goal\nallow: app/*\n' "$base" > .dflow/demo.md
+out=$("$ps" overlap demo); [ $? = 1 ] && echo "$out" | grep -q "no allow:" && ok || bad "overlap without allow: $out"
+printf 'slug: demo\nbase: %s\nallow: app/* tests/*\n\n# goal\n' "$base" > .dflow/demo.md
+row d "tests/x.py" planned - -
+expect 0 "manifest without protect:" "$ps" overlap demo
+printf 'slug: demo\nbase: %s\nallow: app/* tests/*\nprotect: -\n\n# goal\n' "$base" > .dflow/demo.md
+expect 0 "protect: - means none" "$ps" overlap demo
+sed -i '' '/^d	/d' .dflow/demo.units.tsv; cp "$t/man" .dflow/demo.md
+# R8: read-only lines (paths "-", as lines.sh line set paths=- writes it) take no part in overlap
+row v-a "-" planned - -; row v-b "-" planned - -
+expect 0 "read-only lines (paths -) pass overlap" "$ps" overlap demo
+sed -i '' '/^v-a	/d; /^v-b	/d' .dflow/demo.units.tsv
 
 # two worker worktrees off base
 git worktree add -q -b wa "$t/wa" "$base"; git worktree add -q -b wb "$t/wb" "$base"
@@ -151,6 +168,18 @@ done
 # the widened 多线 table (lines.sh init) is read by header name
 "$here/lines.sh" init demo >/dev/null
 expect 0 "scope on the widened table" "$ps" scope demo s "$(git -C "$t/ws" rev-parse HEAD)"
+# R8: a verifier line registered as the playbook says (paths=-) keeps overlap passing, and its scope
+# requires a branch that changes nothing
+printf 'slug: ro\nbase: %s\nallow: app/* README.md\nprotect: tests/*\n\n# goal\n' "$head" > .dflow/ro.md
+"$here/lines.sh" init ro >/dev/null
+"$here/lines.sh" line set ro w paths="app/w.py app/v.py" state=dispatched >/dev/null
+"$here/lines.sh" line set ro v-w paths=- state=dispatched base="$head" branch=wv carrier=headless attempt=1 >/dev/null
+[ "$(awk -F'\t' '$1 == "v-w" { print $3 }' .dflow/ro.units.tsv)" = - ] && ok || bad "line set paths=- not stored as -"
+expect 0 "a paths=- verifier line next to a writing line passes overlap" "$ps" overlap ro
+git worktree add -q -b wv "$t/wv" "$head"
+expect 0 "scope of a read-only line with no change" "$ps" scope ro v-w
+( cd "$t/wv"; echo V > app/v.py; git add -A; git commit -qm "verifier wrote" )
+out=$("$ps" scope ro v-w); [ $? = 1 ] && echo "$out" | grep -q "OUTSIDE app/v.py (read-only" && ok || bad "a read-only line that changed a file: $out"
 # orphan scan reads the branch column by name, wherever it sits
 git worktree add -q -b dflow-unit/re-x .dflow/worktrees/re-x "$head"; ( cd .dflow/worktrees/re-x; echo X > app/x.py; git add -A; git commit -qm x )
 printf 'branch\tid\tpaths\tstate\tbase\ndflow-unit/re-x\tx\tapp/x.py\tdispatched\t%s\n' "$head" > .dflow/re.units.tsv

@@ -3,7 +3,7 @@
 # (pass only on the same full sha; a verifier's verdict outranks a self pass; self needs the brief's
 # 单命令验证), status (and the read-only --print), and machine-wide resource locks (mutual exclusion
 # across working directories, release only with the holder's token, one winner when a stale lock is
-# taken over concurrently).
+# taken over concurrently, and no acquire while a release has the lock moved aside).
 set -u
 here=$(cd "$(dirname "$0")" && pwd); ln="$here/lines.sh"; pass=0; fail=0
 ok() { pass=$((pass+1)); }; bad() { fail=$((fail+1)); echo "FAIL $*"; }
@@ -76,8 +76,17 @@ echo "$out" | grep -q "pass recorded on" && ok || bad "other-sha pass not named:
 expect 0 "self pass with single-command evidence" "$ln" ledger record demo a 3 "$s3" pass self worker "single-command: make check"
 expect 2 "single-command self pass without the brief's permission" "$ln" ledger check demo a "$s3"
 echo "$out" | grep -q "单命令验证" && ok || bad "brief permission not named: $out"
-printf 'dflow 线 demo/a/3\n验收：单命令验证 make check\n' > .dflow/demo/briefs/a-3.md
-expect 0 "single-command self pass counts when the brief says 单命令验证" "$ln" ledger check demo a "$s3"
+# R4: only the structured line "验证<blanks>单命令验证：<command>" in that attempt's brief allows it
+printf 'dflow 线 demo/a/3\n验证：禁止单命令验证；必须另派验收线\n' > .dflow/demo/briefs/a-3.md
+expect 2 "a brief that forbids 单命令验证" "$ln" ledger check demo a "$s3"
+printf 'dflow 线 demo/a/3\n说明：小改动可以单命令验证，但这次不行。\n验证     另派验收线\n' > .dflow/demo/briefs/a-3.md
+expect 2 "单命令验证 only in prose" "$ln" ledger check demo a "$s3"
+printf 'dflow 线 demo/a/3\n  验证 单命令验证：make check\n验证 单命令验证：\n' > .dflow/demo/briefs/a-3.md
+expect 2 "the line indented, or without a command" "$ln" ledger check demo a "$s3"
+printf 'dflow 线 demo/a/2\n验证     单命令验证：make check\n' > .dflow/demo/briefs/a-3.md
+expect 2 "the right line in another attempt's brief" "$ln" ledger check demo a "$s3"
+printf 'dflow 线 demo/a/3\n目标     修 a\n验证     单命令验证：make check\n' > .dflow/demo/briefs/a-3.md
+expect 0 "single-command self pass counts with the brief's 验证 line" "$ln" ledger check demo a "$s3"
 expect 0 "later fail" "$ln" ledger record demo a 3 "$s3" fail test codex "ci.log"
 expect 2 "a later fail revokes the pass" "$ln" ledger check demo a "$s3"
 # a verifier's fail is not undone by a self pass appended after it
@@ -149,7 +158,18 @@ expect 2 "status with an unknown option" "$ln" status demo --write
 # a 10-column table without init still renders (missing columns as "-")
 printf 'id\tdeps\tpaths\tstate\tbase\tagent\tbranch\tdispatched_at\ttries\tlanded\nz\t-\tx\tplanned\t-\t-\t-\t-\t0\t-\n' > .dflow/old.units.tsv
 mkdir -p .dflow/old; printf 'id\tattempt\tsha\tresult\tevidence_type\tverifier\tevidence\tts\n' > .dflow/old/ledger.tsv
-out=$("$ln" status old); [ $? = 0 ] && grep -q '^| z | planned | - | - | - | - | - | - |' .dflow/old/status.md && ok || bad "old table status: $out $(cat .dflow/old/status.md)"
+out=$("$ln" status old); [ $? = 0 ] && grep -q '^| z | planned | - | - | - | - | - | 未验 | - |' .dflow/old/status.md && ok || bad "old table status: $out $(cat .dflow/old/status.md)"
+# R5: the verdict column is the effective verdict: a verifier's test fail, then a (permitted) self
+# pass on the same sha, shows fail; the latest raw row is only in its own column, 原始最新
+git checkout -qb we; echo e >> a.txt; git commit -qam "e try 1"; se=$(git rev-parse HEAD); git checkout -q -
+"$ln" line set demo e state=dispatched attempt=1 paths=a.txt >/dev/null
+printf 'dflow 线 demo/e/1\n验证     单命令验证：make check\n' > .dflow/demo/briefs/e-1.md
+echo "RECEIPT e 1 done $se" > .dflow/demo/reports/e-1.md
+"$ln" ledger record demo e 1 "$se" fail test codex "ci.log" >/dev/null
+"$ln" ledger record demo e 1 "$se" pass self worker "single-command: make check" >/dev/null
+out=$("$ln" status demo --print)
+echo "$out" | grep -q "^| e | dispatched | - | - | 1 | - | done $se | fail @$se | pass self @${se:0:12} |" && ok || bad "board shows a self pass the verdict rejects: $(echo "$out" | grep '^| e ')"
+echo "$out" | grep -q '| 验收 | 原始最新 |' && ok || bad "board header: $(echo "$out" | grep '^| 线')"
 
 # concurrent writers keep every row (write lock + atomic replace)
 rp=(); for i in 1 2 3 4 5 6 7 8; do "$ln" ledger record demo c 1 "$base" pass test w$i "e$i" >/dev/null & rp+=($!); done; wait "${rp[@]}"
@@ -194,8 +214,49 @@ printf 'attempt: demo/a/1\npid: %s\ncommand: sleep 60\nsince: 2026-10-24T00:00:0
 : > "$t/won"; rp=()
 for i in 1 2 3 4 5 6 7 8; do (cd "$t/wt$(( i % 2 + 1 ))" && "$ln" lock acquire gui "demo/t$i/1" "$p2" >/dev/null 2>&1 && echo "demo/t$i/1" >> "$t/won") & rp+=($!); done; wait "${rp[@]}"
 [ "$(wc -l < "$t/won" | tr -d ' ')" = 1 ] && grep -qx "attempt: $(cat "$t/won")" "$DFLOW_LOCK_DIR/gui/holder" && ok || bad "concurrent takeovers: winners $(tr '\n' ' ' < "$t/won"); holder $(cat "$DFLOW_LOCK_DIR/gui/holder")"
-[ -z "$(ls -d "$DFLOW_LOCK_DIR"/gui.* 2>/dev/null)" ] && ok || bad "takeover left $(ls -d "$DFLOW_LOCK_DIR"/gui.*)"
+[ -z "$(ls -d "$DFLOW_LOCK_DIR"/gui.* 2>/dev/null | grep -v '/gui\.txn$')" ] && ok || bad "takeover left $(ls -d "$DFLOW_LOCK_DIR"/gui.*)"
 kill "$p1" "$p2" 2>/dev/null
+# R2: acquire, takeover and release are one transaction each. A release is paused (by a python3
+# stand-in around its rename) before and after it moves the lock aside; meanwhile its holder dies, a
+# second attempt tries to take the stale lock over, and a third tries to acquire while the lock
+# directory is away. Neither may get the lock inside that window (they wait or are refused), and in
+# the end exactly one holds it, the holder file names it, and no moved-aside directory is left.
+realpy=$(command -v python3); pz="$t/pause"; mkdir -p "$t/slowpy" "$pz"
+cat > "$t/slowpy/python3" <<'W'
+#!/bin/sh
+case "${5:-}" in *.rel.*)
+    touch "$PAUSE/pre"; while [ ! -e "$PAUSE/go1" ]; do sleep 0.05; done
+    "$REALPY" "$@"; rc=$?
+    touch "$PAUSE/post"; while [ ! -e "$PAUSE/go2" ]; do sleep 0.05; done
+    exit $rc ;;
+esac
+exec "$REALPY" "$@"
+W
+chmod +x "$t/slowpy/python3"
+waitfor() { local i; for i in $(seq 1 100); do [ -e "$1" ] && return 0; sleep 0.1; done; return 1; }
+sleep 60 & pids+=($!); pa=$!; sleep 60 & pids+=($!); pb=$!; sleep 60 & pids+=($!); pc=$!
+ta=$("$ln" lock acquire gui3 demo/a/1 "$pa" 2>/dev/null) || bad "test setup: acquire gui3"
+( PAUSE=$pz REALPY=$realpy PATH="$t/slowpy:$PATH" "$ln" lock release gui3 "$ta" > "$t/rel.out" 2>&1 ) & rel=$!
+waitfor "$pz/pre" || bad "test setup: the release never reached its move"
+kill "$pa"; wait "$pa" 2>/dev/null
+( DFLOW_LOCK_TXN_WAIT=30 "$ln" lock acquire gui3 demo/b/1 "$pb" > "$t/b.tok" 2> "$t/b.err"; echo $? > "$t/b.rc" ) & bp=$!
+sleep 1.5; touch "$pz/go1"; waitfor "$pz/post" || bad "test setup: the release never finished its move"
+( DFLOW_LOCK_TXN_WAIT=30 "$ln" lock acquire gui3 demo/c/1 "$pc" > "$t/c.tok" 2> "$t/c.err"; echo $? > "$t/c.rc" ) & cq=$!
+sleep 1.5
+inwin=""; for w in b c; do [ "$(cat "$t/$w.rc" 2>/dev/null)" = 0 ] && inwin="$inwin $w"; done
+[ -z "$inwin" ] && ok || bad "acquired while a release had the lock moved aside:$inwin ($(cat "$t/b.err" "$t/c.err"))"
+touch "$pz/go2"; wait "$rel" "$bp" "$cq"
+won=""; for w in b c; do [ "$(cat "$t/$w.rc")" = 0 ] && won="$won $w"; done
+[ "$won" = " b" ] || [ "$won" = " c" ] && grep -qx "attempt: demo/${won# }/1" "$DFLOW_LOCK_DIR/gui3/holder" && grep -qx "token: $(cat "$t/${won# }.tok")" "$DFLOW_LOCK_DIR/gui3/holder" && ok || bad "after the release: winners$won; holder $(cat "$DFLOW_LOCK_DIR/gui3/holder" 2>&1); release $(cat "$t/rel.out")"
+[ -z "$(ls -d "$DFLOW_LOCK_DIR"/gui3.* 2>/dev/null | grep -v '/gui3\.txn$')" ] && ok || bad "a moved-aside lock was left: $(ls -d "$DFLOW_LOCK_DIR"/gui3.*)"
+grep -q "^ok released" "$t/rel.out" && ok || bad "the paused release: $(cat "$t/rel.out")"
+# a transaction whose holder died does not block: the kernel drops the flock with its process
+python3 -I -c 'import fcntl, os, sys; fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_APPEND); fcntl.flock(fd, fcntl.LOCK_EX); os._exit(0)' "$DFLOW_LOCK_DIR/gui4.txn"
+out=$(DFLOW_LOCK_TXN_WAIT=2 "$ln" lock acquire gui4 demo/b/1 "$pb" 2>&1); [ $? = 0 ] && ok || bad "a dead transaction holder blocked the lock: $out"
+# while a live process holds the transaction, an acquire waits and is then refused, touching nothing
+python3 -I -c 'import fcntl, os, sys, time; fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_APPEND); fcntl.flock(fd, fcntl.LOCK_EX); time.sleep(30)' "$DFLOW_LOCK_DIR/gui5.txn" & pids+=($!); sleep 0.5
+out=$(DFLOW_LOCK_TXN_WAIT=1 "$ln" lock acquire gui5 demo/b/1 "$pb" 2>&1); [ $? = 1 ] && echo "$out" | grep -q busy && [ ! -e "$DFLOW_LOCK_DIR/gui5" ] && ok || bad "busy transaction: $out"
+kill "$pb" "$pc" 2>/dev/null
 
 expect 2 "usage" "$ln"
 expect 1 "bad slug" "$ln" status "../x"

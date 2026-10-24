@@ -5,6 +5,7 @@
 #                 slug, branch, base, deadline (UTC, YYYY-mm-ddTHH:MM:SSZ), allow, protect
 #   <slug>.lock/  the lease (atomic mkdir); lease file inside: session, pid, manifest_sha256, claimed_at, caffeinate_pid
 #   <slug>.tsv    decision log (scripts/log.sh); "commit <sha>" in the evidence column marks a logged commit
+#                 (a 多线 land writes "commit <new sha> from <source sha>": the new sha is the logged one)
 #
 # Usage: run-state.sh claim|check|caffeinate|release|scope <slug>
 #   claim       take the lease for this session; refused while another live agent process

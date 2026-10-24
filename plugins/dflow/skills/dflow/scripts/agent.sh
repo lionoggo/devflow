@@ -18,7 +18,9 @@
 #                 group is stopped), then the receipt .dflow/<slug>/reports/<id>-<attempt>.md:
 #                 exit 0 "delivered <done|partial|blocked> <sha|path>" (ended, receipt valid for this id
 #                 and attempt), 1 "exited without receipt" (ended; commits on the branch do not count),
-#                 3 "running", 1 "ended lost" or "ended timeout..." as proc_wait prints them
+#                 3 "running" or "running (identity unverified)" (the pid is alive and cannot be checked:
+#                 not ended, not lost, never signalled), 1 "ended lost" or "ended timeout..." as proc_wait
+#                 prints them
 #   agent.sh peek <slug> <id> <attempt>
 #                 the same answers as wait, from one look: never waits, never signals, no limit
 #   agent.sh stop <slug> <id> <attempt>

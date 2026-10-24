@@ -7,14 +7,16 @@
 #   review.sh wait <out-file> [seconds] [limit]
 #                                             wait up to <seconds> (default 50) for it to end;
 #                                             exit 0 "ended exit <code>" (also in <out-file>.exit),
-#                                             3 "running", 1 "ended lost" (no exit code and no live process
-#                                             of this review on record) or "ended timeout" (over <limit>
+#                                             3 "running" (or "running (identity unverified)": its pid is
+#                                             alive and ps cannot check it), 1 "ended lost" (no exit code;
+#                                             the pid is gone or provably another process) or "ended timeout" (over <limit>
 #                                             seconds since start, default 1200; its process group is stopped,
 #                                             or the line says it is still running or was not stopped)
 # The wait only signals a process group whose leader is this review's wrapper (pid, start time and
 # command equal to <out-file>.pid exactly); anything else, or anything ps cannot check, is reported,
 # never killed. Times are wall-clock seconds.
-# A start for an <out-file> whose review is still running is refused (exit 1). Lifecycle: proc.sh.
+# A start for an <out-file> whose review is still running, or whose pid is alive with its identity
+# unverified, is refused (exit 1). Lifecycle: proc.sh.
 # The other model: from Codex `claude -p --tools Read,Grep,Glob` (read and search only: plan mode would
 # write a plan file under ~/.claude/plans); from Claude Code
 # `codex exec -s read-only -`. DFLOW_REVIEW_CMD (a shell command) replaces it, for tests.

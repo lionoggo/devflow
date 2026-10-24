@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Tests for proc.sh beyond what review-test.sh covers: a second start while the run is alive is refused
 # and overwrites nothing (also when started concurrently), stdin reaches the command, stop and wait
-# check identity (exact lstart and command, never a substring) before any signal, peek never signals.
+# check identity (exact lstart and command, never a substring) before any signal, peek never signals;
+# an identity that cannot be checked (ps fails for the pid, or the record lacks it) is "running
+# (identity unverified)": never restarted over, never lost, never signalled.
 set -u
 here=$(cd "$(dirname "$0")" && pwd); . "$here/proc.sh"; pass=0; fail=0
 ok() { pass=$((pass+1)); }; bad() { fail=$((fail+1)); echo "FAIL $*"; }
@@ -26,8 +28,9 @@ out=$(proc_stop "$t/out2"); [ "$out" = "ok stopped" ] && ! kill -0 -- -"$pid" 2>
 python3 -I -c 'import os, time; os.setsid(); time.sleep(30)' & other=$!; disown "$other"; mine+=("$other"); sleep 0.3
 echo "$other $(date +%s)" > "$t/out3.pid"
 out=$(proc_stop "$t/out3"); [ $? = 1 ] && case $out in "not stopped: "*) true ;; *) false ;; esac && kill -0 "$other" 2>/dev/null && ok || bad "foreign pid stopped: $out"
-out=$(proc_start "$t/out3" sh -c 'echo x' < /dev/null 2>&1); [ $? = 0 ] && kill -0 "$other" 2>/dev/null && ok || bad "a foreign pid record blocked start or was signalled: $out"
-proc_wait "$t/out3" 10 >/dev/null
+# that record has no lstart or command, so the live pid's identity is unknown: no restart over it, not lost
+rec3=$(cat "$t/out3.pid")
+out=$(proc_start "$t/out3" sh -c 'echo x' < /dev/null 2>&1); [ $? = 1 ] && [ "$(cat "$t/out3.pid")" = "$rec3" ] && kill -0 "$other" 2>/dev/null && ok || bad "start over a live pid of unknown identity: $out"
 # no pid record, and no ps: nothing signalled
 out=$(proc_stop "$t/none"); [ $? = 1 ] && [ "${out#not stopped}" != "$out" ] && ok || bad "stop without record: $out"
 mkdir -p "$t/nops"; printf '#!/bin/sh\necho "ps: operation not permitted" >&2; exit 1\n' > "$t/nops/ps"; chmod +x "$t/nops/ps"
@@ -54,5 +57,35 @@ proc_stop "$t/out6" >/dev/null; out=$(proc_peek "$t/out6"); [ $? = 1 ] && [ "$ou
 for i in 1 2 3 4 5 6; do ( p=$(proc_start "$t/out7" sh -c "echo starter-$i; sleep 30" < /dev/null 2>/dev/null) && echo "$i $p" >> "$t/won" ) & rp+=($!); done; wait "${rp[@]}"
 read -r wi wp < "$t/won"; [ -n "${wp:-}" ] && mine+=("$wp"); sleep 0.5
 [ "$(wc -l < "$t/won" | tr -d ' ')" = 1 ] && [ "$(head -1 "$t/out7.pid" | cut -d' ' -f1)" = "$wp" ] && [ "$(cat "$t/out7")" = "starter-$wi" ] && [ ! -e "$t/out7.starting" ] && ok || bad "concurrent starts: winners $(tr '\n' ';' < "$t/won"); out $(cat "$t/out7")"
+# R1: ps answers for this shell but fails for the run's pid (pgid, lstart, command unreadable): the
+# identity is unknown, not "another process": start refused with the record and output kept, wait and
+# peek say "running (identity unverified)", never "ended lost", and nothing is signalled
+mkdir -p "$t/denyps"; printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = "$DENY_PID" ] && { echo "ps: operation not permitted" >&2; exit 1; }; done\nexec /bin/ps "$@"\n' > "$t/denyps/ps"; chmod +x "$t/denyps/ps"
+pid=$(proc_start "$t/out8" sh -c 'echo first; sleep 30' < /dev/null); mine+=("$pid"); sleep 0.3
+rec=$(cat "$t/out8.pid")
+out=$(DENY_PID=$pid PATH="$t/denyps:$PATH" proc_start "$t/out8" sh -c 'echo second' < /dev/null 2>&1); rc=$?
+case $out in [0-9]*) mine+=("$out") ;; esac
+[ $rc = 1 ] && [ "$(cat "$t/out8.pid")" = "$rec" ] && [ "$(cat "$t/out8")" = first ] && ok || bad "target ps fails: start overwrote the record: $rc $out"
+out=$(DENY_PID=$pid PATH="$t/denyps:$PATH" proc_peek "$t/out8"); rc=$?
+[ $rc = 3 ] && [ "$out" = "running (identity unverified)" ] && kill -0 "$pid" 2>/dev/null && ok || bad "target ps fails: peek $rc $out"
+out=$(DENY_PID=$pid PATH="$t/denyps:$PATH" proc_wait "$t/out8" 1); rc=$?
+[ $rc = 3 ] && [ "$out" = "running (identity unverified)" ] && kill -0 "$pid" 2>/dev/null && ok || bad "target ps fails: wait $rc $out"
+out=$(DENY_PID=$pid PATH="$t/denyps:$PATH" proc_stop "$t/out8"); [ $? = 1 ] && kill -0 "$pid" 2>/dev/null && ok || bad "target ps fails: stopped $out"
+proc_stop "$t/out8" >/dev/null
+# R1: started where ps was refused (the record has no lstart or command), looked at later with ps: the
+# pid is alive and its identity unknown, so the same: no restart over it, not lost
+pid=$(PATH="$t/nops:$PATH" proc_start "$t/out9" sh -c 'echo first; sleep 30' < /dev/null); mine+=("$pid"); sleep 0.3
+rec=$(cat "$t/out9.pid")
+[ -z "$(sed -n 's/^lstart: //p' "$t/out9.pid")" ] && ok || bad "test setup: a start without ps recorded an lstart"
+out=$(proc_start "$t/out9" sh -c 'echo second' < /dev/null 2>&1); rc=$?
+case $out in [0-9]*) mine+=("$out") ;; esac
+[ $rc = 1 ] && [ "$(cat "$t/out9.pid")" = "$rec" ] && [ "$(cat "$t/out9")" = first ] && ok || bad "record without identity: start overwrote it: $rc $out"
+out=$(proc_peek "$t/out9"); rc=$?
+[ $rc = 3 ] && [ "$out" = "running (identity unverified)" ] && ok || bad "record without identity: peek $rc $out"
+out=$(proc_wait "$t/out9" 1); rc=$?
+[ $rc = 3 ] && [ "$out" = "running (identity unverified)" ] && kill -0 "$pid" 2>/dev/null && ok || bad "record without identity: wait $rc $out"
+out=$(proc_stop "$t/out9"); [ $? = 1 ] && kill -0 "$pid" 2>/dev/null && ok || bad "record without identity: stopped $out"
+kill -9 -- -"$pid" 2>/dev/null; sleep 0.3
+out=$(proc_peek "$t/out9"); [ "$out" = "ended lost" ] && ok || bad "record without identity, pid gone: $out"
 echo "proc-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]

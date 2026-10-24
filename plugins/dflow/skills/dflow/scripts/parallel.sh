@@ -3,18 +3,23 @@
 # Unit table: <repo>/.dflow/<slug>.units.tsv, tab-separated, header
 #   id deps paths state base agent branch dispatched_at tries landed
 # (多线 appends carrier model attempt brief report progress_at; columns are read by header name).
-# paths: space-separated globs the unit may write ("*" crosses "/").
+# paths: space-separated globs the unit may write ("*" crosses "/"); "-" alone: it writes nothing
+# (a read-only line, such as a verifier), so it takes no part in overlap and scope requires no change.
 # Only the coordinating session writes the table; this script only reads it.
 #
 # Usage: parallel.sh <command> <slug> [id] [sha]
 #   prepare  <slug>       exclude .claude/worktrees/ and .dflow/; require a clean tree; create the table
-#   overlap  <slug>       unit paths pairwise disjoint, inside the manifest's allow, outside protect
+#   overlap  <slug>       unit paths pairwise disjoint, inside the manifest's allow, outside protect.
+#                         Needs the manifest .dflow/<slug>.md with an "allow:" line in its leading
+#                         key block, else exit 1 naming what is missing; "protect:" may be left out,
+#                         and "protect: -" means no protected paths
 #   worktree <slug> <id>  for a host whose subagents have no worktree isolation (Codex): create
 #                         .dflow/worktrees/<slug>-<id> on branch dflow-unit/<slug>-<id> at the
 #                         unit's base; prints the path and branch for the brief and the table.
 #                         A sent-back unit (tries > 0) whose worktree is not at the new base is refused
 #   scope    <slug> <id> [sha]
 #                         base is an ancestor of the unit branch; every changed file is in the unit's paths
+#                         (paths "-": the branch must change nothing)
 #   land     <slug> <id> [sha]
 #                         clean tree + ancestor check, then `cherry-pick -n base..branch`; on conflict abort.
 #                         With <sha> (scope too): it must name one commit, and the unit branch's head must be
@@ -42,6 +47,7 @@ cd "$root" || exit 1
 table=".dflow/$slug.units.tsv"; man=".dflow/$slug.md"; landrec=".dflow/$slug.landed"
 set -f   # globs in the table are patterns, never expanded against the disk
 
+wpaths() { local p; p=$(col "$1" paths); [ "$p" = - ] || printf '%s' "$p"; }  # "-": writes nothing
 col() { # col <id> <column>
     awk -F'\t' -v id="$1" -v c="$2" 'NR == 1 { for (i = 1; i <= NF; i++) h[$i] = i; next }
         $h["id"] == id { print $h[c]; exit }' "$table"
@@ -58,7 +64,7 @@ need_table() { [ -f "$table" ] || die "no unit table $table"; }
 need_unit() {
     need_table; [ -n "$uid" ] || usage
     [ -n "$(col "$uid" id)" ] || die "unit $uid not in $table"
-    base=$(col "$uid" base); branch=$(col "$uid" branch); paths=$(col "$uid" paths)
+    base=$(col "$uid" base); branch=$(col "$uid" branch); paths=$(wpaths "$uid")
     [ -n "$base" ] && [ "$base" != - ] || die "unit $uid has no base"
     [ -n "$branch" ] && [ "$branch" != - ] || die "unit $uid has no branch"
     git rev-parse -q --verify "$branch^{commit}" >/dev/null || die "branch $branch not found"
@@ -83,12 +89,15 @@ prepare)
     echo "ok prepared $table" ;;
 overlap)
     need_table; bad=0; files=$(git ls-files)
+    [ -f "$man" ] || die "no manifest $man: overlap checks the paths against its allow and protect (write it first: a leading key block with allow: <globs> and, if any, protect: <globs>)"
     allow=$(field "$man" allow); protect=$(field "$man" protect)
+    [ -n "$allow" ] || die "manifest $man has no allow: line in its leading key block (allow: <globs> the units may write)"
+    [ "$protect" != - ] || protect=""
     all=$(ids)
     for a in $all; do
-        pa=$(col "$a" paths)
+        pa=$(wpaths "$a")
         for g in $pa; do
-            if [ -n "$allow" ] && ! match_any "$g" $allow; then echo "OUTSIDE-ALLOW $a $g"; bad=1; fi
+            if ! match_any "$g" $allow; then echo "OUTSIDE-ALLOW $a $g"; bad=1; fi
             if [ -n "$protect" ]; then
                 for p in $protect; do
                     case $g in $p) echo "PROTECTED $a $g"; bad=1 ;; esac
@@ -98,7 +107,7 @@ overlap)
         done
         for b in $all; do
             [ "$a" \< "$b" ] || continue
-            pb=$(col "$b" paths)
+            pb=$(wpaths "$b")
             for ga in $pa; do for gb in $pb; do
                 la=$(lit "$ga"); lb=$(lit "$gb"); hit=""
                 if [ "$ga" = "$gb" ]; then hit=1
@@ -119,7 +128,8 @@ scope)
     need_unit; bad=0
     while IFS= read -r f; do
         [ -n "$f" ] || continue
-        match_any "$f" $paths || { echo "OUTSIDE $f"; bad=1; }
+        if [ -z "$paths" ]; then echo "OUTSIDE $f (read-only unit, paths -: it may change nothing)"; bad=1
+        elif ! match_any "$f" $paths; then echo "OUTSIDE $f"; bad=1; fi
     done <<< "$(git diff --name-only "$base" "$tip")"
     [ $bad = 0 ] && echo "ok scope $uid"; exit $bad ;;
 land)

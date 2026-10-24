@@ -98,7 +98,7 @@ out=$("$ag" peek demo a 2); [ $? = 1 ] && [ "$out" = "exited without receipt" ] 
 # peek of a run over any limit, with no ps: reported running, never signalled
 pid=$(run 14 'sleep 30'); sleep 0.3
 mkdir -p "$t/nops"; printf '#!/bin/sh\necho "ps: operation not permitted" >&2; exit 1\n' > "$t/nops/ps"; chmod +x "$t/nops/ps"
-out=$(PATH="$t/nops:$PATH" "$ag" peek demo a 14); [ "$out" = running ] && kill -0 "$pid" 2>/dev/null && ok || bad "peek without ps: $out"
+out=$(PATH="$t/nops:$PATH" "$ag" peek demo a 14); [ "$out" = "running (identity unverified)" ] && kill -0 "$pid" 2>/dev/null && ok || bad "peek without ps: $out"
 out=$(PATH="$t/nops:$PATH" "$ag" wait demo a 14 1 1); case $out in "ended timeout, not stopped"*) kill -0 "$pid" 2>/dev/null && ok || bad "no ps: worker stopped at the limit";; *) bad "no ps at the limit: $out";; esac
 "$ag" stop demo a 14 >/dev/null
 echo "agent-test: $pass passed, $fail failed"

@@ -31,7 +31,8 @@ python3 -I -c 'import os, time; os.setsid(); time.sleep(30)' & other=$!; sleep 0
 echo "$other" > "$t/out6.pid"
 out=$("$rv" wait "$t/out6" 3 1); [ "$out" = "ended lost" ] && kill -0 "$other" 2>/dev/null && ok || bad "old-format pid file: $out"
 echo "$other $(( $(date +%s) - 100 ))" > "$t/out7.pid"
-out=$("$rv" wait "$t/out7" 3 1); [ "$out" = "ended lost" ] && kill -0 "$other" 2>/dev/null && ok || bad "foreign group signalled: $out"
+# a record without lstart and command for a live pid: identity unknown, so not lost, and at the limit only reported
+out=$("$rv" wait "$t/out7" 3 1); case $out in "ended timeout, not stopped"*) kill -0 "$other" 2>/dev/null && ok || bad "foreign group signalled: $out" ;; *) bad "record without identity at the limit: $out" ;; esac
 kill "$other" 2>/dev/null
 # the same file named another way (relative, ./) is still recognised as this review
 pid=$(DFLOW_REVIEW_CMD='sleep 30' "$rv" start "$t/prompt" "$t/out8")
@@ -40,7 +41,7 @@ kill -- -"$pid" 2>/dev/null
 # a sandbox that refuses ps: a live review stays "running", and is never signalled at the limit
 mkdir -p "$t/nops"; printf '#!/bin/sh\necho "ps: operation not permitted" >&2; exit 1\n' > "$t/nops/ps"; chmod +x "$t/nops/ps"
 pid=$(DFLOW_REVIEW_CMD='sleep 30' "$rv" start "$t/prompt" "$t/out9")
-out=$(PATH="$t/nops:$PATH" "$rv" wait "$t/out9" 1); [ "$out" = running ] && ok || bad "no ps, live review: $out"
+out=$(PATH="$t/nops:$PATH" "$rv" wait "$t/out9" 1); [ "$out" = "running (identity unverified)" ] && ok || bad "no ps, live review: $out"
 out=$(PATH="$t/nops:$PATH" "$rv" wait "$t/out9" 3 1); case $out in "ended timeout, not stopped"*) kill -0 "$pid" 2>/dev/null && ok || bad "no ps: review killed";; *) bad "no ps at limit: $out";; esac
 kill -- -"$pid" 2>/dev/null
 "$rv" start >/dev/null 2>&1; [ $? = 2 ] && ok || bad "usage"
