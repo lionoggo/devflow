@@ -51,7 +51,7 @@ table.
 |---|---|---|---|
 | subagent, Claude host | Agent with `isolation: "worktree"`, `run_in_background: true`, the brief as prompt; take the branch from the report | it wakes you and the receipt is valid | TaskStop with its id; confirmed when the tool says it stopped |
 | subagent, Codex host | `parallel.sh worktree`, then `spawn_agent` (`fork_context: false`) with the brief, its 准备 the working-directory form (`references/unit-brief.md`) | `wait_agent` returns it and the receipt is valid | `close_agent`; confirmed when it returns |
-| headless, either host | `parallel.sh worktree`, then `$S/scripts/agent.sh start <slug> <id> <attempt> <brief> <worktree> <claude\|codex> <limit>`, `<limit>` twice the brief's time box in seconds (default 7200): the run keeps that deadline itself, so it stops even if this session dies; it refuses a brief whose first line is not `dflow 线 <slug>/<id>/<attempt>` for these arguments, and an attempt already claimed; with no model it runs the other host's model; record the pid it prints in `agent` | `agent.sh wait <slug> <id> <attempt> 50 <limit>` prints `delivered <state> <sha\|path>`; pass the same `<limit>` as at start (past it the worker is stopped when its identity checks out, and only reported when it cannot; the default is 3600) | `agent.sh stop <slug> <id> <attempt>`; exit 0 is confirmed, `not stopped: …` is not |
+| headless, either host | `parallel.sh worktree`, then `$S/scripts/agent.sh start <slug> <id> <attempt> <brief> <worktree> <claude\|codex> <limit>`, `<limit>` twice the brief's time box in seconds (default 7200): the run keeps that deadline itself, so it stops even if this session dies; it refuses a brief whose first line is not `dflow 线 <slug>/<id>/<attempt>` for these arguments, and an attempt already claimed; with no model it runs the other host's model; record the pid it prints in `agent` | `agent.sh wait <slug> <id> <attempt> 50 <limit>` prints `delivered <state> <sha\|path>`; pass the same `<limit>` as at start (`running (timeout, not stopped)` means the run's own deadline passed but part of it would not die: treat it as 停止未确认; past it the worker is stopped when its identity checks out, and only reported when it cannot; the default is 3600) | `agent.sh stop <slug> <id> <attempt>`; exit 0 is confirmed, `not stopped: …` is not |
 | visible, either host | `parallel.sh worktree`, then `orca agent launch --agent <claude\|codex> --worktree path:<wt> --prompt "<brief text>" --surface terminal --json` (record the terminal handle in `agent`); no Orca: `tmux new-window -c <wt> '<cmd> "<brief text>"'`, where `<cmd>` is `claude --dangerously-skip-permissions` or `codex --dangerously-bypass-approvals-and-sandbox`; neither: print the command for the user to run | `lines.sh receipt <slug> <id> <attempt>` exits 0; the window may stay open | send one stop sentence into the window (Orca terminal send per `orca-cli`, or `tmux send-keys`), or ask the user; confirmed only when its agent process is gone or the user says it stopped |
 
 Headless and visible lines run with permissions fully open, like ccy and cxy;
@@ -121,7 +121,10 @@ limit, but does not stop it; `stop` prints `not stopped: …`.
    from the first verified line on. Landing is never a final phase.
 7. **Close.** Collect once more. Reconcile every attempt to an end state
    (landed, dead, stopped, or 停止未确认 with what you did about it). Check
-   the done condition on the real HEAD. `lines.sh lock show` each resource
+   the done condition on the real HEAD, then every acceptance item of the
+   manifest one by one on that HEAD, each with its evidence (the per-line
+   passes do not add up to this). Delete the `refs/dflow/<slug>/` refs of
+   lines that landed or died. `lines.sh lock show` each resource
    in the standing orders; none should name this slug. Shared files
    (README, registries) go to one more registered line after the lines they
    depend on land, verified and landed like the rest. `parallel.sh cleanup
@@ -179,8 +182,15 @@ only after the previous one ended or its stop was confirmed. It gets a new
 brief, a new report path, and a new worktree: Claude subagents get one
 automatically; for the others, remove the old worktree and branch first,
 after landing or noting anything useful in them, and `parallel.sh worktree`
-makes the new one at the new base. Write what the old attempt found into
-the new brief's 上下文. Never resume an old worker to give it new scope.
+makes the new one at the new base. When the old attempt's commits are worth
+keeping (a fix attempt after a failed verdict, a delivery cut off by its
+time box), keep them first with `git update-ref refs/dflow/<slug>/<id>-<old
+attempt> <its head>` (a ref, no branch or worktree), and make the new
+brief's 准备 apply them after the switch to base: `git cherry-pick <old
+base>..<that ref>`, spelled with literal SHAs; conflicts are the worker's
+to resolve inside its paths. Write what the old attempt found into
+the new brief's 上下文. Close deletes these refs (`git update-ref -d`)
+once their line landed or died. Never resume an old worker to give it new scope.
 
 **Stop protocol:** stop with the carrier's own command (**Carriers**). Only
 after it is confirmed, start the next attempt. When the stop cannot be
@@ -257,9 +267,12 @@ its holder process is gone. The ledger's write lock
   product would be rerunning one command is ceremony.
 - A verifier line runs on the other model family
   than the verified line's `model` column (claude → codex, codex → claude),
-  in a fresh session. Its report goes through the acceptance items of the
-  manifest one by one, each with its evidence or "未验证"; a pass that
-  leaves an item unchecked is recorded as `blocked`, not `pass`. Name that model explicitly (`agent.sh start … <model>`,
+  in a fresh session. Its report goes through the acceptance items the
+  line's brief names (its 验收 lines, with their manifest numbers) one by
+  one, each with its evidence or "未验证"; a pass that leaves one of those
+  unchecked is recorded as `blocked`, not `pass`. Items owned by other lines
+  are not its business: the whole manifest is checked once, on the real
+  HEAD, at **Close**. Name that model explicitly (`agent.sh start … <model>`,
   or the matching visible command); never rely on the default, which is
   picked against the main session's host, not against the worker.
 - A verifier line is a line of its own: id `v-<id>`, a row in the table
@@ -312,7 +325,9 @@ One line at a time, in dependency order:
    An untracked file these checks did produce: list it, then delete it.
    One they did not produce goes to the user first, per **Ask first** in
    `SKILL.md`.
-6. Pass: `git add` only the line's paths, commit once, `lines.sh line set
+6. Pass: `git add` only the line's paths, commit once, `parallel.sh landed
+   <slug> <id>` (closes the land record, so a later unland cannot reach
+   back into it), `lines.sh line set
    <slug> <id> state=landed landed=<new sha>`.
 7. Log a row whose evidence is `commit <new sha> from <sha>` (the
    `commit <sha>` form is what `run-state.sh check` reads, so an unattended
