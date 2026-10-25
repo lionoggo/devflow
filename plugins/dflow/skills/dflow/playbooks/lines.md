@@ -120,14 +120,14 @@ limit, but does not stop it; `stop` prints `not stopped: …`.
 6. **Verify and land.** Per **Verification** and **Landing**, continuously,
    from the first verified line on. Landing is never a final phase.
 7. **Close.** Collect once more. Reconcile every attempt to an end state
-   (landed, dead, stopped, or 停止未确认 with what you did about it). Check
-   the done condition on the real HEAD, then every acceptance item of the
-   manifest one by one on that HEAD, each with its evidence (the per-line
-   passes do not add up to this). Delete the `refs/dflow/<slug>/` refs of
-   lines that landed or died. `lines.sh lock show` each resource
-   in the standing orders; none should name this slug. Shared files
-   (README, registries) go to one more registered line after the lines they
-   depend on land, verified and landed like the rest. `parallel.sh cleanup
+   (landed, dead, stopped, or 停止未确认 with what you did about it). Shared
+   files (README, registries) go to one more registered line after the
+   lines they depend on land, verified and landed like the rest. Then, on
+   the final HEAD, check the done condition and every acceptance item of
+   the manifest one by one, each with its evidence (the per-line passes do
+   not add up to this). Delete the `refs/dflow/<slug>/` refs of lines that
+   landed or died. `lines.sh lock show` each resource in the standing
+   orders; none should name this slug. `parallel.sh cleanup
    <slug>` removes only lines in state `landed`, `done`, `dead`, `stopped`,
    or `planned` (never dispatched); it keeps and lists `dispatched`,
    `stop-unconfirmed`, any other state, and a landed line whose branch has
@@ -334,7 +334,10 @@ One line at a time, in dependency order:
    round does not flag the landing as unlogged). This row and the ledger's
    pass at `<sha>` together count the line toward the done condition.
 8. `land` itself refused or hit a conflict: nothing landed, so never
-   unland (the tree may hold the user's changes); fix the cause. A failure
+   unland (the tree may hold the user's changes); fix the cause. One
+   exception: `could not record <marker>` means the code did land but
+   unland cannot undo it; do not land again, check the files it lists
+   against the source SHA, and restore them by hand. A failure
    from step 5 on: `parallel.sh unland <slug> <id>` (it undoes only the
    files that land recorded, and refuses once the land is committed), then
    a fix line as in **Verification**.
