@@ -40,11 +40,15 @@
 #                         written: exit 1, "FAIL landed <id> into the working tree but could not record
 #                         <marker>; undo by hand: <files>", and no .landed row
 #   landed   <slug> <id>  close the land of <id> once it is committed: removes .landing only when it is this
-#                         unit's and HEAD is no longer the one it records; else refused
+#                         unit's, HEAD is no longer the one it records, and every listed file is in HEAD as it
+#                         landed (A/M: HEAD:<path> is the recorded blob; D: not in HEAD) with no change of it
+#                         left in the index or working tree; else refused, the paths that differ listed, the
+#                         record kept
 #   unland   <slug> <id>  undo an uncommitted land: only with a .landing of this unit at the current HEAD
 #                         and every listed file still as the land left it (A/M: the recorded blob; D: absent)
-#                         or already as HEAD has it (nothing to undo); else refused, nothing touched, the
-#                         files that differ listed. Restores its M/D files
+#                         or already as HEAD has it (nothing to undo), in the working tree and in the index
+#                         alike; else refused, nothing touched, the files that differ listed (the index ones
+#                         marked 暂存区不符). Restores its M/D files
 #                         from HEAD, deletes its A files, removes the record. Other changes left are listed
 #                         (exit 1), never touched
 #   cleanup  <slug> [--ignored-ok]
@@ -120,6 +124,13 @@ manifest_check() { # changed files base..tip against the manifest's allow and pr
     return $bad
 }
 mval() { awk -F'\t' -v k="$1" '$1 == k { print $2; exit }' "$marker" 2>/dev/null; }
+idxblob() { # idxblob <path>: its stage-0 blob in the index, "-" when not there, "?" when unmerged or unreadable
+    local l n
+    l=$(git ls-files -s -- ":(literal)$1" 2>/dev/null) || { echo "?"; return; }
+    [ -n "$l" ] || { echo -; return; }
+    n=$(printf '%s\n' "$l" | wc -l | tr -d ' ')
+    case $n:$l in 1:*" 0	$1") l=${l#* }; echo "${l%% *}" ;; *) echo "?" ;; esac
+}
 
 case $cmd in
 prepare)
@@ -262,6 +273,10 @@ unland)
         [ -n "$f" ] || continue
         cur=-; { [ -e "$f" ] || [ -L "$f" ]; } && cur=$(git hash-object -- "$f" 2>/dev/null || echo "?")
         was=$(git rev-parse -q --verify "HEAD:$f" 2>/dev/null || echo -)
+        # the index too: the landed blob, or already back as HEAD has it (D: absent, or HEAD's)
+        idx=$(idxblob "$f")
+        if [ -z "$h" ] || { [ "$idx" != "$h" ] && [ "$idx" != "$was" ]; }; then changed="$changed
+  $f (暂存区不符: the index holds $idx, not the landed ${h:-?} nor HEAD's $was)"; fi
         [ -n "$h" ] && { [ "$cur" = "$h" ] || [ "$cur" = "$was" ]; } && continue
         case $st:$cur in
         D:-) ;;
@@ -290,6 +305,20 @@ landed)
     mu=$(mval uid); mh=$(mval head); now=$(git rev-parse HEAD)
     [ "$mu" = "$uid" ] || die "the pending land belongs to unit ${mu:-?}, not $uid; not closed"
     [ "$mh" != "$now" ] || die "HEAD is still $mh where $uid landed: commit the land first; not closed"
+    # the land's content must be in HEAD (A/M: the recorded blob; D: gone) with nothing of it left to commit
+    miss=""
+    while IFS=$'\t' read -r st f h; do
+        [ -n "$f" ] || continue
+        hb=$(git rev-parse -q --verify "HEAD:$f" 2>/dev/null || echo -)
+        if [ "$st" = D ]; then [ "$hb" = - ] || miss="$miss
+  $f (deleted by the land, still in HEAD)"
+        elif [ -z "$h" ] || [ "$hb" != "$h" ]; then miss="$miss
+  $f (HEAD has ${hb}, not the landed ${h:-?})"; fi
+        p=$(git status --porcelain --untracked-files=all -- ":(literal)$f" 2>/dev/null)
+        [ -z "$p" ] || miss="$miss
+  $f (uncommitted in the index or working tree: ${p%%$'\n'*})"
+    done <<< "$(awk -F'\t' '$1 ~ /^[AMDT]$/ { print $1 "\t" $2 "\t" $3 }' "$marker")"
+    [ -z "$miss" ] || { echo "FAIL the land of $uid is not committed as it landed; not closed, $marker kept:$miss"; exit 1; }
     rm -f "$marker" || die "could not remove $marker"
     echo "ok closed the land of $uid (HEAD $mh -> $now)" ;;
 cleanup)

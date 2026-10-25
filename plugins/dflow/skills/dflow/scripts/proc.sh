@@ -9,7 +9,9 @@
 #                                file), stdout and stderr to <out>; writes <out>.pid and, when <cmd>
 #                                ends, <out>.exit; prints the pid. Refused (return 1, nothing
 #                                overwritten) while the run recorded for <out> is alive (or its pid is
-#                                alive and its identity unknown), or while another start for <out>
+#                                alive and its identity unknown), while <out>.timeout is there (no .exit)
+#                                and the recorded process group still has a member or cannot be checked
+#                                (its leader gone or not), or while another start for <out>
 #                                holds <out>.starting. DFLOW_PROC_LIMIT=<seconds>: the session leader
 #                                (the forked wrapper) keeps that deadline itself, with or without
 #                                proc_wait: past it, it ignores TERM, TERMs its process group, waits up
@@ -25,15 +27,21 @@
 #                                "ended exit <code>", 3 "running", "running (identity unverified)" or
 #                                "running (timeout, not stopped)" (<out>.timeout, no <out>.exit, leader not gone),
 #                                1 "ended lost" (no exit code, and the recorded pid is gone or is
-#                                provably another process) or "ended timeout" (over <limit> seconds
+#                                provably another process), "ended timeout, stopped late" (as lost, but
+#                                with <out>.timeout and the process group provably empty; while the group
+#                                still has a member or cannot be checked, the leader gone or not, it is
+#                                "running (timeout, not stopped)") or "ended timeout" (over <limit> seconds
 #                                since start, default 1200; its process group is stopped, or the line
 #                                says it is still running or was not stopped)
 #   proc_peek <out>              look once, never signal: 0 "ended exit <code>", 3 "running",
 #                                "running (identity unverified)" or "running (timeout, not stopped)",
-#                                1 "ended lost"
+#                                1 "ended lost" or "ended timeout, stopped late" (as proc_wait)
 #   proc_stop <out>              stop the run's process group after the identity check and confirm it
 #                                is gone: return 0 "ok stopped" / "ok not running", or 1
-#                                "not stopped: <reason>" (nothing is signalled when the check fails)
+#                                "not stopped: <reason>" (nothing is signalled when the check fails).
+#                                Leader gone: "not stopped" while its group has a member or cannot be
+#                                checked; once the group is provably empty "ok not running", and
+#                                <out>.timeout is removed
 # <out>.pid: line 1 "<pid> <started>", then "lstart: <ps lstart>" and "command: <ps command>" of the
 # wrapper (`python3 -I - <out> ...`), read right after the fork. Identity: the pid leads its own
 # process group and its lstart and command equal the recorded ones exactly. The identity is unknown
@@ -79,6 +87,22 @@ _proc_id() { # 0 the recorded pid is this run, 1 it is gone or provably another 
     return 1
 }
 _proc_group() { kill -0 -- -"$_pp" 2>/dev/null; }  # any process of the group left
+_proc_gstate() { # 0 the recorded group still has a member, 1 it is provably empty, 2 cannot tell
+    local e
+    [ -n "$_pp" ] || return 2
+    e=$(kill -0 -- -"$_pp" 2>&1) && return 0
+    case $e in *"No such process"*) return 1 ;; esac
+    return 2   # e.g. not permitted: there is a member, or kill cannot say
+}
+_proc_late() { # <out>, its leader gone: with <out>.timeout (a stop that was not confirmed), say what the group is
+    # prints and returns as wait/peek: 3 "running (timeout, not stopped)" while a member is left or it
+    # cannot be told; 1 "ended timeout, stopped late" once the group is provably empty. No .timeout: 1 "ended lost"
+    [ -f "$1.timeout" ] || { echo "ended lost"; return 1; }
+    _proc_gstate; case $? in
+    1) echo "ended timeout, stopped late"; return 1 ;;
+    *) echo "running (timeout, not stopped)"; return 3 ;;
+    esac
+}
 _proc_kill() { # TERM the group, then KILL; return 0 when the group is gone
     kill -TERM -- -"$_pp" 2>/dev/null
     for _ in 1 2 3 4 5; do _proc_group || break; sleep 1; done
@@ -98,6 +122,11 @@ proc_start() {
         _proc_id; rc=$?
         [ $rc != 0 ] || { rmdir "$out.starting"; echo "FAIL $out is still running as pid $_pp; not started again" >&2; return 1; }
         [ $rc != 2 ] || { rmdir "$out.starting"; echo "FAIL $out: pid $_pp is alive and cannot be checked as this run (identity unverified); not started again, nothing overwritten" >&2; return 1; }
+        # its leader is gone, but a timeout stop was never confirmed: only a provably empty group is over
+        if [ -f "$out.timeout" ]; then
+            _proc_gstate; rc=$?
+            [ $rc = 1 ] || { rmdir "$out.starting"; echo "FAIL $out: timed out and its process group $_pp $([ $rc = 0 ] && echo "still has a member" || echo "cannot be checked") (leader gone, stop not confirmed: $out.timeout); not started again, nothing overwritten" >&2; return 1; }
+        fi
     fi
     rm -f "$out.exit" "$out.pid" "$out.timeout"
     DFLOW_PROC_LIMIT="${DFLOW_PROC_LIMIT:-}" python3 -I - "$out" "$@" 3<&0 <<'PY'
@@ -202,7 +231,7 @@ proc_wait() {
     done
     if [ -f "$out.exit" ]; then echo "ended exit $(cat "$out.exit")"; return 0; fi
     _proc_id; id=$?
-    [ $id != 1 ] || { echo "ended lost"; return 1; }
+    [ $id != 1 ] || { _proc_late "$out"; return; }
     [ ! -f "$out.timeout" ] || { echo "running (timeout, not stopped)"; return 3; }
     if [ $(( $(date +%s) - _ps )) -ge "$limit" ]; then
         [ $id = 0 ] || { echo "ended timeout, not stopped: cannot check that $_pp is this run"; return 1; }
@@ -216,7 +245,7 @@ proc_peek() {
     local out id; out=$(proc_canon "$1"); _proc_load "$out"
     if [ -f "$out.exit" ]; then echo "ended exit $(cat "$out.exit")"; return 0; fi
     _proc_id; id=$?
-    [ $id != 1 ] || { echo "ended lost"; return 1; }
+    [ $id != 1 ] || { _proc_late "$out"; return; }
     [ ! -f "$out.timeout" ] || { echo "running (timeout, not stopped)"; return 3; }
     [ $id = 0 ] && echo "running" || echo "running (identity unverified)"; return 3
 }
@@ -225,7 +254,11 @@ proc_stop() {
     local out id; out=$(proc_canon "$1"); _proc_load "$out"
     [ -n "$_pp" ] || { echo "not stopped: no pid record at $out.pid"; return 1; }
     if ! kill -0 "$_pp" 2>/dev/null; then
-        _proc_group && { echo "not stopped: leader $_pp is gone but its process group still runs"; return 1; }
+        _proc_gstate; case $? in
+        0) echo "not stopped: leader $_pp is gone but its process group still runs"; return 1 ;;
+        2) echo "not stopped: leader $_pp is gone and its process group cannot be checked"; return 1 ;;
+        esac
+        rm -f "$out.timeout"   # the group is provably empty: a timeout stop left unconfirmed is over now
         echo "ok not running"; return 0
     fi
     _proc_id; id=$?

@@ -18,7 +18,9 @@
 #               still be the one judged stale (else it is put back and the claim refused)
 # Lease transaction: refresh, caffeinate, release and a takeover change the lease only while holding
 #   <slug>.lock.txn (mkdir), re-reading it inside; waited for up to DFLOW_LEASE_TXN_WAIT seconds
-#   (default 5), else refused; one older than 10s is taken as left by a dead process and removed
+#   (default 5), else refused. <slug>.lock.txn/owner holds the holder's pid and a random token: it is
+#   taken over only once that pid is gone (or, with no pid to check, when it is over 60s old), and a
+#   holder leaving removes it only while it still holds its own token
 # Session: the nearest claude or codex process above this shell is the host; its session id
 #   is $CLAUDE_CODE_SESSION_ID or $CODEX_THREAD_ID and its pid is the owner pid.
 #   DFLOW_SESSION_ID and DFLOW_AGENT_PID override both (tests).
@@ -81,17 +83,43 @@ install_lock() { # create $lock with this session's lease in one rename; fails w
     rm -rf "$tmp"; return 1
 }
 age() { local m; m=$(stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null) || m=$(date +%s); echo $(( $(date +%s) - m )); }
-txl="$lock.txn"
-txn() { # hold $lock.txn (mkdir) until this script exits: every change to the lease (refresh, caffeinate,
-    # release, takeover) runs inside it. Retried for DFLOW_LEASE_TXN_WAIT seconds (default 5); one left
-    # more than 10s ago is taken as dead and removed (renamed first, as a takeover does)
-    local n=0 max=$(( ${DFLOW_LEASE_TXN_WAIT:-5} * 10 ))
+txl="$lock.txn"; txtok=""
+txv() { sed -n "s/^$2: //p" "$1/owner" 2>/dev/null | head -1; }  # txv <txn dir> <pid|token>
+txn_stale() { # txn_stale <txn dir>: 0 it is left by a holder that is gone: its owner pid no longer runs, or,
+    # with no pid to check (no owner file yet, or kill cannot tell), it is more than 60s old
+    local p e
+    p=$(txv "$1" pid)
+    if printf '%s' "$p" | grep -Eq '^[1-9][0-9]*$'; then
+        e=$(kill -0 "$p" 2>&1) && return 1
+        case $e in *"No such process"*) return 0 ;; esac
+    fi
+    [ "$(age "$1")" -gt 60 ]
+}
+txn() { # hold $lock.txn (mkdir; owner: this pid and a random token) until this script exits: every change
+    # to the lease (refresh, caffeinate, release, takeover) runs inside it. Retried for
+    # DFLOW_LEASE_TXN_WAIT seconds (default 5). A stale one (txn_stale) is renamed aside, checked to be
+    # the one judged stale (same owner record, still stale), and removed; on exit only a transaction with
+    # this token is removed
+    local n=0 max=$(( ${DFLOW_LEASE_TXN_WAIT:-5} * 10 )) st
+    txtok=$(od -An -N12 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n'); [ -n "$txtok" ] || txtok="$$.$RANDOM$RANDOM.$(date +%s)"
     until mkdir "$txl" 2>/dev/null; do
-        if [ "$(age "$txl")" -gt 10 ] && rename "$txl" "$txl.dead.$$"; then rm -rf "$txl.dead.$$"; continue; fi
-        n=$((n + 1)); [ $n -lt $max ] || die "another change to the lease is in progress ($txl); retry"
+        st=$(cat "$txl/owner" 2>/dev/null)
+        if txn_stale "$txl" && rename "$txl" "$txl.dead.$$"; then
+            # still the one judged stale (same owner record, and stale on its own): else it changed hands
+            if [ "$(cat "$txl.dead.$$/owner" 2>/dev/null)" = "$st" ] && txn_stale "$txl.dead.$$"; then rm -rf "$txl.dead.$$"; continue; fi
+            # it changed hands between the look and the rename: put it back (never over a newer one), never remove it
+            { [ ! -e "$txl" ] && rename "$txl.dead.$$" "$txl"; } || die "a lease transaction changed hands while being taken over; left at $txl.dead.$$"
+        fi
+        n=$((n + 1)); [ $n -lt $max ] || die "another change to the lease is in progress ($txl, holder pid $(txv "$txl" pid | grep . || echo unknown)); retry"
         sleep 0.1
     done
-    trap 'rmdir "$txl" 2>/dev/null' EXIT
+    trap 'txn_end' EXIT
+    printf 'pid: %s\ntoken: %s\n' "$$" "$txtok" > "$txl/owner" || { rm -f "$txl/owner"; rmdir "$txl" 2>/dev/null; trap - EXIT; die "could not record the holder of $txl"; }
+}
+txn_end() { # remove $txl only while it is still this holder's
+    [ -n "$txtok" ] && [ "$(txv "$txl" token)" = "$txtok" ] || return 0
+    rm -f "$txl/owner" && rmdir "$txl" 2>/dev/null
+    return 0
 }
 put_lease() { # put_lease <key> <value>: rewrite one lease line through a rename (call inside txn)
     sed "s/^$1: .*/$1: $2/" "$lease" > "$lease.tmp.$$" && mv -f "$lease.tmp.$$" "$lease" ||

@@ -15,7 +15,8 @@
 #                 DFLOW_HOLDER_PID=<the run's session leader pid> (the holder pid for lines.sh lock).
 #                 limit-seconds (default 7200; give the model to set it): the run's own deadline,
 #                 DFLOW_PROC_LIMIT of proc_start, kept by its session leader even if nobody waits;
-#                 past it the output ends "timeout after <N>s", the exit is 124, the group is stopped.
+#                 past it the output ends "timeout after <N>s", the exit is 124, the group is stopped;
+#                 a group it cannot confirm stopped gets no exit, see "running (timeout, not stopped)".
 #                 DFLOW_AGENT_CMD (a shell command) replaces it, for tests
 #   agent.sh wait <slug> <id> <attempt> [seconds] [limit]
 #                 proc_wait (default 50 seconds; limit default 3600 since start, then the worker's process
@@ -23,14 +24,18 @@
 #                 exit 0 "delivered <done|partial|blocked> <sha|path>" (ended, receipt valid for this id
 #                 and attempt), 1 "exited without receipt" (ended; commits on the branch do not count),
 #                 3 "running" or "running (identity unverified)" (the pid is alive and cannot be checked:
-#                 not ended, not lost, never signalled), 1 "ended lost" or "ended timeout..." as proc_wait
+#                 not ended, not lost, never signalled), 3 "running (timeout, not stopped)" (past the
+#                 limit-seconds its stop was not confirmed: <out>.timeout, no exit, and the leader alive
+#                 or its process group still with a member or not checkable; not ended, stop it),
+#                 1 "ended timeout, stopped late" (that stop's group is provably empty now, no exit
+#                 code; not lost, no receipt counts), 1 "ended lost" or "ended timeout..." as proc_wait
 #                 prints them
 #   agent.sh peek <slug> <id> <attempt>
 #                 the same answers as wait, from one look: never waits, never signals, no limit
 #   agent.sh stop <slug> <id> <attempt>
 #                 proc_stop: "ok stopped" / "ok not running", or exit 1 "not stopped: <reason>" (the
-#                 identity check failed or could not be made, or the group is still there; nothing
-#                 else is signalled)
+#                 identity check failed or could not be made, or the group is still there or cannot be
+#                 checked; nothing else is signalled)
 # Exit 0 ok, 1 refused or not done, 2 usage, 3 running.
 set -u
 cmd=${1:-}; slug=${2:-}; uid=${3:-}; att=${4:-}

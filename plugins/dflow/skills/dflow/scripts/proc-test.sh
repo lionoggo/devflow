@@ -119,6 +119,35 @@ out=$(proc_peek "$t/lim5"); [ $? = 3 ] && [ "$out" = "running (timeout, not stop
 out=$(proc_wait "$t/lim5" 1); [ $? = 3 ] && [ "$out" = "running (timeout, not stopped)" ] && ok || bad "wait on an unconfirmed stop: $out"
 out=$(proc_start "$t/lim5" sh -c 'echo again' < /dev/null 2>&1); [ $? = 1 ] && ok || bad "start over an unconfirmed stop: $out"
 out=$(proc_stop "$t/lim5"); [ "$out" = "ok stopped" ] && ! kill -0 -- -"$pid" 2>/dev/null && ok || bad "stop after an unconfirmed stop: $out"
+# U2: <out>.timeout, no .exit, and the leader gone: while its process group still has a member (a group
+# whose leader exited and left a child), wait and peek say "running (timeout, not stopped)" (3) and
+# start is refused, keeping .pid and .timeout; once the group is empty, "ended timeout, stopped late"
+# (1, not lost), start may go ahead, and stop says ok and removes .timeout
+lp=$(python3 -I -c '
+import os, sys, time
+r, w = os.pipe()
+if os.fork():
+    os.close(w); print(os.read(r, 32).decode()); os.wait(); sys.exit(0)
+os.setsid()
+if os.fork() == 0:
+    n = os.open(os.devnull, os.O_RDWR)
+    for fd in (0, 1, 2): os.dup2(n, fd)
+    os.close(w); time.sleep(60); os._exit(0)
+os.write(w, str(os.getpid()).encode()); os._exit(0)'); mine+=("$lp")
+printf '%s %s\nlstart: gone\ncommand: gone\n' "$lp" "$(date +%s)" > "$t/orph.pid"; echo "timeout after 1s, not stopped: x" > "$t/orph.timeout"
+! kill -0 "$lp" 2>/dev/null && kill -0 -- -"$lp" 2>/dev/null && ok || bad "test setup: leader $lp gone with its group left"
+out=$(proc_peek "$t/orph"); [ $? = 3 ] && [ "$out" = "running (timeout, not stopped)" ] && ok || bad "peek: leader gone, group left: $out"
+out=$(proc_wait "$t/orph" 1); [ $? = 3 ] && [ "$out" = "running (timeout, not stopped)" ] && ok || bad "wait: leader gone, group left: $out"
+rec=$(cat "$t/orph.pid")
+out=$(proc_start "$t/orph" sh -c 'echo again' < /dev/null 2>&1); [ $? = 1 ] && [ "$(cat "$t/orph.pid")" = "$rec" ] && [ -f "$t/orph.timeout" ] && ok || bad "start over a group left behind: $out"
+out=$(proc_stop "$t/orph"); [ $? = 1 ] && [ -f "$t/orph.timeout" ] && ok || bad "stop: leader gone, group left: $out"
+kill -9 -- -"$lp" 2>/dev/null; gone "$lp" 10 || bad "test setup: group $lp not gone"
+out=$(proc_peek "$t/orph"); [ $? = 1 ] && [ "$out" = "ended timeout, stopped late" ] && ok || bad "peek: leader gone, group empty: $out"
+out=$(proc_wait "$t/orph" 1); [ $? = 1 ] && [ "$out" = "ended timeout, stopped late" ] && ok || bad "wait: leader gone, group empty: $out"
+cp "$t/orph.pid" "$t/orph2.pid"; cp "$t/orph.timeout" "$t/orph2.timeout"
+out=$(proc_stop "$t/orph2"); [ $? = 0 ] && [ ! -e "$t/orph2.timeout" ] && ok || bad "stop: leader gone, group empty: $out"
+pid=$(proc_start "$t/orph" sh -c 'echo again' < /dev/null); mine+=("$pid")
+out=$(proc_wait "$t/orph" 10); [ "$out" = "ended exit 0" ] && [ ! -e "$t/orph.timeout" ] && grep -qx again "$t/orph" && ok || bad "start once the group is empty: $out"
 # without DFLOW_PROC_LIMIT: no deadline of its own, as before
 pid=$(proc_start "$t/nolim" sh -c 'sleep 4; exit 5' < /dev/null); mine+=("$pid")
 sleep 3; [ ! -f "$t/nolim.exit" ] && kill -0 "$pid" 2>/dev/null && ok || bad "a run without a limit ended early"

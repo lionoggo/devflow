@@ -238,6 +238,27 @@ git commit -qm "land x"
 out=$("$ps" unland ld x); [ $? = 1 ] && echo "$out" | grep -q "landed" && ok || bad "unland after a commit does not point to landed: $out"
 out=$("$ps" landed ld x); [ $? = 0 ] && [ ! -e "$mk" ] && ok || bad "landed after the commit: $out"
 git reset -q --hard "$h0"; rm -f "$mk"
+# U1: unland checks the index too: a later change staged and then reverted in the working tree only
+# (index U, working tree back at the landed L) is refused, and the staged U stays
+"$ps" land ld x >/dev/null; cp app/core.py "$t/core.L"; echo U >> app/core.py; git add app/core.py
+iu=$(git rev-parse :app/core.py); cp "$t/core.L" app/core.py
+out=$("$ps" unland ld x); rc=$?
+[ $rc = 1 ] && echo "$out" | grep -q "app/core.py.*暂存区不符" && [ "$(git rev-parse :app/core.py)" = "$iu" ] && cmp -s app/core.py "$t/core.L" && [ -f app/ldx.py ] && [ -f "$mk" ] && ok || bad "unland over a staged-only later change: $rc $out"
+git add app/core.py; expect 0 "unland once the index is back at the landed content" "$ps" unland ld x
+# U1: a file already restored in the index as HEAD has it is fine (nothing to undo there)
+"$ps" land ld x >/dev/null; git restore --staged app/core.py
+expect 0 "unland with the index already back at HEAD" "$ps" unland ld x
+# U4: landed needs the land's content in the commit: an empty commit, or one of an unrelated file only,
+# is refused with the paths named and the marker kept; the real commit of the land closes it
+"$ps" land ld x >/dev/null; git update-ref HEAD "$(git commit-tree "HEAD^{tree}" -p HEAD -m empty)"   # an empty commit; the land stays staged
+out=$("$ps" landed ld x); [ $? = 1 ] && echo "$out" | grep -q "app/core.py" && echo "$out" | grep -q "app/ldx.py" && [ -f "$mk" ] && ok || bad "landed after an empty commit: $out"
+echo u > other.txt; git add other.txt; git commit -qm other -- other.txt
+out=$("$ps" landed ld x); [ $? = 1 ] && echo "$out" | grep -q "app/core.py" && [ -f "$mk" ] && ok || bad "landed after an unrelated commit: $out"
+git commit -qm "land x" -- app/core.py; echo late >> app/ldx.py
+out=$("$ps" landed ld x); [ $? = 1 ] && echo "$out" | grep -q "app/ldx.py" && ! echo "$out" | grep -q "app/core.py" && [ -f "$mk" ] && ok || bad "landed with part of the land still uncommitted: $out"
+git checkout -q app/ldx.py 2>/dev/null; git commit -qm "land x rest" -- app/ldx.py
+out=$("$ps" landed ld x); [ $? = 0 ] && [ ! -e "$mk" ] && ok || bad "landed once the land is committed: $out"
+git reset -q --hard "$h0"; rm -f "$mk" other.txt
 # T3: the marker cannot be written (a directory in its place, or a read-only .dflow): land fails, says
 # what to undo by hand, and records no .landed row
 mkdir "$mk"; cp .dflow/ld.landed "$t/ldrec" 2>/dev/null || : > "$t/ldrec"
