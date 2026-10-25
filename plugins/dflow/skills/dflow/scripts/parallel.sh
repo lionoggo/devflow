@@ -148,7 +148,7 @@ wtis() { # wtis <path> <entry>: 0 when the working tree holds <entry> there (typ
     if [ "$2" = - ]; then [ ! -e "$f" ] && [ ! -L "$f" ]; return; fi
     m=${2%% *}; b=${2#* }
     case $m in
-    120000) [ -L "$f" ] && [ "$(printf '%s' "$(readlink -- "$f")" | git hash-object --stdin 2>/dev/null)" = "$b" ] ;;
+    120000) [ -L "$f" ] && [ "$(python3 -I -c 'import os, sys; sys.stdout.buffer.write(os.readlink(os.fsencode(sys.argv[1])))' "$f" | git hash-object --stdin 2>/dev/null)" = "$b" ] ;;  # raw bytes: $(readlink) would drop trailing newlines
     100644|100755)
         [ -f "$f" ] && [ ! -L "$f" ] && [ "$(git hash-object -- "$f" 2>/dev/null)" = "$b" ] || return 1
         [ "$(git config --bool core.fileMode 2>/dev/null)" != false ] || return 0

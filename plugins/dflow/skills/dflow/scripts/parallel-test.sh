@@ -265,6 +265,12 @@ git worktree add -q -b ld-l "$t/ldl" "$h0"; ( cd "$t/ldl"; ln -s core.py app/lnk
 printf 'l\t-\tapp/lnk\tdispatched\t%s\t-\tld-l\t-\t0\t-\n' "$h0" >> .dflow/ld.units.tsv
 out=$("$ps" land ld l); rc=$?
 [ $rc = 0 ] && [ -L app/lnk ] && grep -qx "$(printf 'A\tapp/lnk\t120000 %s' "$(printf core.py | git hash-object --stdin)")" "$mk" && ok || bad "land of a symlink: $rc $out; $(cat "$mk" 2>/dev/null)"
+# a symlink retargeted after the land to the same text plus a trailing newline is the user's: refused
+ln -sfn "core.py
+" app/lnk
+out=$("$ps" unland ld l); rc=$?
+[ $rc = 1 ] && [ -L app/lnk ] && [ "$(readlink app/lnk | od -c | head -1)" != "$(printf core.py | od -c | head -1)" ] && ok || bad "unland over a symlink retargeted with a trailing newline: $rc $out"
+ln -sfn core.py app/lnk
 out=$("$ps" unland ld l); rc=$?
 [ $rc = 0 ] && [ ! -e app/lnk ] && [ ! -L app/lnk ] && [ ! -e "$mk" ] && [ -z "$(git status --porcelain --untracked-files=all | grep -v ' \.dflow/' | grep -v ' \.claude/worktrees/')" ] && ok || bad "unland of a symlink: $rc $out"
 "$ps" land ld l >/dev/null; git commit -qm "land l"
