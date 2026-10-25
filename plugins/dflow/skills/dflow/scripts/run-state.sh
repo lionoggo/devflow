@@ -14,14 +14,17 @@
 #               what it is, and refused when this session's own pid is unknown or not running;
 #               taking over a stale lease stops the previous
 #               owner's caffeinate. The lock directory appears with its lease in one rename;
-#               takers of a stale lease queue on <slug>.lock.takeover, and the renamed lease must
+#               a stale lease is taken over inside the lease transaction, and the renamed lease must
 #               still be the one judged stale (else it is put back and the claim refused)
+# Lease transaction: refresh, caffeinate, release and a takeover change the lease only while holding
+#   <slug>.lock.txn (mkdir), re-reading it inside; waited for up to DFLOW_LEASE_TXN_WAIT seconds
+#   (default 5), else refused; one older than 10s is taken as left by a dead process and removed
 # Session: the nearest claude or codex process above this shell is the host; its session id
 #   is $CLAUDE_CODE_SESSION_ID or $CODEX_THREAD_ID and its pid is the owner pid.
 #   DFLOW_SESSION_ID and DFLOW_AGENT_PID override both (tests).
 #   check       per-round checks; exit 0 ok, 1 stop and report, 3 commits in base..HEAD that no
 #               row names (one "UNLOGGED <sha>" line each, oldest first), 4 deadline passed
-#   caffeinate  start `caffeinate -i` until the deadline and record its pid in the lease
+#   caffeinate  start `caffeinate -i` until the deadline and record its pid in this session's lease
 #   refresh     after an approved manifest change (claim again keeps the old hash): only when this
 #               session holds the lease and its manifest_sha256 is <old>, replace it atomically with
 #               the current manifest's hash; prints "ok refreshed <old> -> <new>". Refused, nothing
@@ -29,7 +32,7 @@
 #   release     stop the recorded caffeinate (only if that pid is still caffeinate), drop the lease
 #   scope       list files changed base..HEAD that are protected or outside allow; exit 1 if any
 set -u
-cmd=${1:-}; slug=${2:-}
+cmd=${1:-}; slug=${2:-}; arg3=${3:-}   # kept before host detection, which reuses the positional parameters
 die() { echo "FAIL $*"; exit 1; }
 [ -n "$cmd" ] && [ -n "$slug" ] || { echo "usage: run-state.sh claim|check|caffeinate|release|scope <slug> | refresh <slug> <old manifest sha256>" >&2; exit 2; }
 printf '%s' "$slug" | grep -Eq '^[a-z0-9][a-z0-9-]{0,62}$' || die "slug must match [a-z0-9][a-z0-9-]{0,62}: $slug"
@@ -46,10 +49,10 @@ host() { # host: "<claude|codex> <pid>" of the nearest agent process above this 
 }
 if [ -n "${DFLOW_SESSION_ID:-}" ]; then me=$DFLOW_SESSION_ID; mypid=${DFLOW_AGENT_PID:-}
 else
-    set -- $(host)
-    case $1 in
-    codex) me=${CODEX_THREAD_ID:-}; mypid=$2 ;;
-    claude) me=${CLAUDE_CODE_SESSION_ID:-}; mypid=${CLAUDE_PID:-$2} ;;
+    read -r hname hpid <<< "$(host)"
+    case $hname in
+    codex) me=${CODEX_THREAD_ID:-}; mypid=$hpid ;;
+    claude) me=${CLAUDE_CODE_SESSION_ID:-}; mypid=${CLAUDE_PID:-$hpid} ;;
     *) me=${CLAUDE_CODE_SESSION_ID:-${CODEX_THREAD_ID:-}}; mypid=${CLAUDE_PID:-} ;;
     esac
 fi
@@ -77,6 +80,23 @@ install_lock() { # create $lock with this session's lease in one rename; fails w
     rename "$tmp" "$lock" && return 0
     rm -rf "$tmp"; return 1
 }
+age() { local m; m=$(stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null) || m=$(date +%s); echo $(( $(date +%s) - m )); }
+txl="$lock.txn"
+txn() { # hold $lock.txn (mkdir) until this script exits: every change to the lease (refresh, caffeinate,
+    # release, takeover) runs inside it. Retried for DFLOW_LEASE_TXN_WAIT seconds (default 5); one left
+    # more than 10s ago is taken as dead and removed (renamed first, as a takeover does)
+    local n=0 max=$(( ${DFLOW_LEASE_TXN_WAIT:-5} * 10 ))
+    until mkdir "$txl" 2>/dev/null; do
+        if [ "$(age "$txl")" -gt 10 ] && rename "$txl" "$txl.dead.$$"; then rm -rf "$txl.dead.$$"; continue; fi
+        n=$((n + 1)); [ $n -lt $max ] || die "another change to the lease is in progress ($txl); retry"
+        sleep 0.1
+    done
+    trap 'rmdir "$txl" 2>/dev/null' EXIT
+}
+put_lease() { # put_lease <key> <value>: rewrite one lease line through a rename (call inside txn)
+    sed "s/^$1: .*/$1: $2/" "$lease" > "$lease.tmp.$$" && mv -f "$lease.tmp.$$" "$lease" ||
+        { rm -f "$lease.tmp.$$"; die "could not rewrite $lease"; }
+}
 need_manifest() {
     [ -f "$man" ] || die "missing manifest $man"
     for k in slug branch base deadline; do [ -n "$(field "$man" $k)" ] || die "manifest has no '$k:'"; done
@@ -90,7 +110,6 @@ claim)
         die "cannot tell this session's agent pid (${mypid:-none}); a lease without a live owner pid would look stale at once"
     mkdir -p "$d"
     if install_lock; then echo "ok claimed $slug"; exit 0; fi
-    age() { echo $(( $(date +%s) - $(stat -f %m "$1" 2>/dev/null || stat -c %Y "$1") )); }
     if [ ! -s "$lease" ]; then # a lock without a lease (an older claim died between mkdir and writing it)
         [ "$(age "$lock")" -gt 10 ] || die "another claim is in progress; retry"
     fi
@@ -100,13 +119,9 @@ claim)
     is_agent "$opid"; ia=$?
     [ $ia != 0 ] || die "held by session $owner (agent pid $opid is alive); close it first"
     [ $ia != 2 ] || die "held by session $owner: pid $opid is alive and ps cannot tell whether it is an agent; not taken over"
-    # Stale lease. One taker at a time; then rename, and check the renamed lease is still the stale one.
-    tk="$lock.takeover"
-    if ! mkdir "$tk" 2>/dev/null; then
-        [ "$(age "$tk")" -gt 10 ] && rename "$tk" "$tk.dead.$$" && rm -rf "$tk.dead.$$"
-        mkdir "$tk" 2>/dev/null || die "another takeover of the stale lease is in progress; retry"
-    fi
-    trap 'rmdir "$tk" 2>/dev/null' EXIT
+    # Stale lease. One taker at a time (the lease transaction); then rename, and check the renamed
+    # lease is still the stale one.
+    txn
     [ "$(cat "$lease" 2>/dev/null)" = "$snap" ] || die "lost the race for a stale lease (it changed); retry"
     rename "$lock" "$lock.stale.$$" || die "lost the race for a stale lease; retry"
     if [ "$(cat "$lock.stale.$$/lease" 2>/dev/null)" != "$snap" ]; then
@@ -141,6 +156,8 @@ check)
     [ "$(date -u +%s)" -lt "$dl" ] && echo "ok before deadline" || { echo "DEADLINE passed"; exit 4; } ;;
 caffeinate)
     need_manifest; [ -f "$lease" ] || die "no lease"
+    txn; [ -f "$lease" ] || die "no lease"
+    owner=$(field "$lease" session); [ -n "$me" ] && [ "$owner" = "$me" ] || die "lease held by session ${owner:-?}, not this one"
     secs=$(( $(epoch "$(field "$man" deadline)") - $(date -u +%s) )); [ "$secs" -gt 0 ] || die "deadline passed"
     command -v caffeinate >/dev/null || { echo "ok no caffeinate on this system"; exit 0; }
     # In a new session, so a host that kills the command's process group when the call ends
@@ -149,21 +166,22 @@ caffeinate)
 p = subprocess.Popen(["caffeinate", "-i", "-t", sys.argv[1]], start_new_session=True,
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 print(p.pid)' "$secs" 2>/dev/null) || { nohup caffeinate -i -t "$secs" >/dev/null 2>&1 & pid=$!; disown 2>/dev/null || true; }
-    sed -i.bak "s/^caffeinate_pid: .*/caffeinate_pid: $pid/" "$lease" && rm -f "$lease.bak"
+    put_lease caffeinate_pid "$pid"
     echo "ok caffeinate pid $pid for ${secs}s" ;;
 refresh)
     need_manifest; [ -f "$lease" ] || die "no lease; run claim"
-    old=${3:-}; [ -n "$old" ] || { echo "usage: run-state.sh refresh <slug> <old manifest sha256>" >&2; exit 2; }
+    old=$arg3; [ -n "$old" ] || { echo "usage: run-state.sh refresh <slug> <old manifest sha256>" >&2; exit 2; }
+    txn; [ -f "$lease" ] || die "no lease; run claim"   # owner and hash are read and written inside it
     owner=$(field "$lease" session)
     [ -n "$me" ] && [ "$owner" = "$me" ] || die "lease held by session ${owner:-?}, not this one; not refreshed"
     cur=$(field "$lease" manifest_sha256); new=$(sha "$man")
     [ "$cur" = "$old" ] || die "the lease's manifest_sha256 is $cur, not $old; not refreshed"
     [ "$new" != "$old" ] || die "manifest unchanged ($old); nothing to refresh"
-    sed "s/^manifest_sha256: .*/manifest_sha256: $new/" "$lease" > "$lease.tmp.$$" && mv -f "$lease.tmp.$$" "$lease" ||
-        { rm -f "$lease.tmp.$$"; die "could not rewrite $lease"; }
+    put_lease manifest_sha256 "$new"
     echo "ok refreshed $old -> $new" ;;
 release)
     [ -f "$lease" ] || { echo "ok no lease"; exit 0; }
+    txn; [ -f "$lease" ] || { echo "ok no lease"; exit 0; }
     owner=$(field "$lease" session)
     [ "$owner" = "$me" ] || die "lease held by session $owner, not this one"
     cp=$(field "$lease" caffeinate_pid)

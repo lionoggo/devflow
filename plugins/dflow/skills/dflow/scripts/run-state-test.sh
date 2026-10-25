@@ -102,6 +102,32 @@ cp .dflow/demo.lock/lease "$t/lease3"
 out=$("$rs" refresh demo "$nh" 2>&1); rc=$?
 [ $rc = 1 ] && cmp -s .dflow/demo.lock/lease "$t/lease3" && ok || bad "refresh with an unchanged manifest: $rc $out"
 cp "$t/m3" .dflow/demo.md; expect 0 "refresh back" "$rs" refresh demo "$nh"
+# T1: the session comes from the host (no DFLOW_SESSION_ID): refresh keeps its <old> argument
+cp .dflow/demo.lock/lease "$t/lease5"; oh=$(sed -n 's/^manifest_sha256: //p' .dflow/demo.lock/lease)
+sed -i '' "s/^session: .*/session: h1/" .dflow/demo.lock/lease
+cp .dflow/demo.md "$t/m5"; echo "approved: host" >> .dflow/demo.md; nh=$(shasum -a 256 .dflow/demo.md | cut -d' ' -f1)
+out=$(env -u DFLOW_SESSION_ID -u DFLOW_AGENT_PID CLAUDE_CODE_SESSION_ID=h1 CODEX_THREAD_ID=h1 CLAUDE_PID=$$ "$rs" refresh demo "$oh" 2>&1); rc=$?
+[ $rc = 0 ] && [ "$out" = "ok refreshed $oh -> $nh" ] && grep -qx "manifest_sha256: $nh" .dflow/demo.lock/lease && ok || bad "refresh with the host's session: $rc $out"
+cp "$t/m5" .dflow/demo.md; cp "$t/lease5" .dflow/demo.lock/lease
+# T5: two refreshes from the same old hash at once: exactly one wins (a slow shasum holds each one
+# between reading the lease and writing it)
+mkdir -p "$t/slowsha"; printf '#!/bin/sh\nsleep 1\nexec %s "$@"\n' "$(command -v shasum)" > "$t/slowsha/shasum"; chmod +x "$t/slowsha/shasum"
+oh=$(sed -n 's/^manifest_sha256: //p' .dflow/demo.lock/lease)
+cp .dflow/demo.md "$t/m6"; echo "approved: race" >> .dflow/demo.md; nh=$(shasum -a 256 .dflow/demo.md | cut -d' ' -f1)
+: > "$t/rr"; rp=()
+for i in 1 2; do (PATH="$t/slowsha:$PATH" "$rs" refresh demo "$oh" > "$t/rr$i" 2>&1 && echo won >> "$t/rr") & rp+=($!); done; wait "${rp[@]}"
+[ "$(grep -c won "$t/rr")" = 1 ] && grep -qx "manifest_sha256: $nh" .dflow/demo.lock/lease && ok || bad "concurrent refreshes: $(grep -c won "$t/rr") won: $(cat "$t/rr1" "$t/rr2")"
+[ -z "$(ls -d .dflow/demo.lock.* 2>/dev/null)" ] && ok || bad "refresh left $(ls -d .dflow/demo.lock.*)"
+cp "$t/m6" .dflow/demo.md; expect 0 "refresh back after the race" "$rs" refresh demo "$nh"
+# T5: a live lease transaction makes refresh wait, then refuse; one left over 10s ago is taken over
+oh=$(sed -n 's/^manifest_sha256: //p' .dflow/demo.lock/lease); cp .dflow/demo.md "$t/m7"; echo "approved: txn" >> .dflow/demo.md
+mkdir .dflow/demo.lock.txn; cp .dflow/demo.lock/lease "$t/lease7"
+out=$(DFLOW_LEASE_TXN_WAIT=1 "$rs" refresh demo "$oh" 2>&1); rc=$?
+[ $rc = 1 ] && cmp -s .dflow/demo.lock/lease "$t/lease7" && [ -d .dflow/demo.lock.txn ] && ok || bad "refresh during another lease transaction: $rc $out"
+touch -t 200001010000 .dflow/demo.lock.txn
+out=$("$rs" refresh demo "$oh" 2>&1); rc=$?
+[ $rc = 0 ] && [ ! -e .dflow/demo.lock.txn ] && ok || bad "refresh over a lease transaction left 10s ago: $rc $out"
+nh=$(shasum -a 256 .dflow/demo.md | cut -d' ' -f1); cp "$t/m7" .dflow/demo.md; expect 0 "refresh back after the txn test" "$rs" refresh demo "$nh"
 
 # dirty tree of unknown origin
 echo x > src/new.py; expect 1 "dirty tree" "$rs" check demo; rm src/new.py

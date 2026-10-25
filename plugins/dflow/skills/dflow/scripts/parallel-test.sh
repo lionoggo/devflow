@@ -207,7 +207,7 @@ git rm -q --cached staged.txt; rm -f staged.txt notes.txt; git checkout -q READM
 # a normal land, then unland: the marker names the unit, HEAD and the files; unland restores a clean tree
 out=$("$ps" land ld x); rc=$?
 mk=.dflow/ld.landing
-[ $rc = 0 ] && grep -qx "$(printf 'uid\tx')" "$mk" && grep -qx "$(printf 'head\t%s' "$h0")" "$mk" && grep -qx "$(printf 'A\tapp/ldx.py')" "$mk" && grep -qx "$(printf 'M\tapp/core.py')" "$mk" && ok || bad "land marker: $rc $out; $(cat "$mk" 2>/dev/null)"
+[ $rc = 0 ] && grep -qx "$(printf 'uid\tx')" "$mk" && grep -qx "$(printf 'head\t%s' "$h0")" "$mk" && grep -qx "$(printf 'A\tapp/ldx.py\t%s' "$(git hash-object app/ldx.py)")" "$mk" && grep -qx "$(printf 'M\tapp/core.py\t%s' "$(git hash-object app/core.py)")" "$mk" && ok || bad "land marker: $rc $out; $(cat "$mk" 2>/dev/null)"
 # unland of another unit, or a second land while this one is pending, is refused and touches nothing
 out=$("$ps" unland ld y); [ $? = 1 ] && echo "$out" | grep -q "unit x" && [ -f app/ldx.py ] && [ -f "$mk" ] && ok || bad "unland of another unit: $out"
 out=$("$ps" unland ld x); rc=$?
@@ -224,6 +224,44 @@ git reset -q --hard "$h0"; rm -f "$mk"
 out=$("$ps" unland ld x); rc=$?
 [ $rc = 1 ] && [ -f app/gen.txt ] && echo "$out" | grep -q "app/gen.txt" && [ ! -e app/ldx.py ] && [ "$(git diff HEAD --name-only)" = "" ] && [ ! -e "$mk" ] && ok || bad "unland with a file the land did not make: $rc $out"
 rm -f app/gen.txt
+# T3: a landed file changed after the land is not the land's: unland refuses as a whole, touches nothing,
+# and names it; back at the landed content it goes through
+"$ps" land ld x >/dev/null; echo user-edit >> app/core.py; cp app/core.py "$t/core.edit"
+out=$("$ps" unland ld x); rc=$?
+[ $rc = 1 ] && echo "$out" | grep -q "app/core.py" && cmp -s app/core.py "$t/core.edit" && [ -f app/ldx.py ] && [ -f "$mk" ] && ok || bad "unland over a changed landed file: $rc $out"
+sed -i '' '$d' app/core.py; expect 0 "unland once the file is back at the landed content" "$ps" unland ld x
+# T3: a land is closed with landed after its commit; landed refuses while HEAD has not moved, or for another unit
+"$ps" land ld x >/dev/null
+out=$("$ps" landed ld x); [ $? = 1 ] && [ -f "$mk" ] && ok || bad "landed before a commit: $out"
+out=$("$ps" landed ld y); [ $? = 1 ] && [ -f "$mk" ] && ok || bad "landed for another unit: $out"
+git commit -qm "land x"
+out=$("$ps" unland ld x); [ $? = 1 ] && echo "$out" | grep -q "landed" && ok || bad "unland after a commit does not point to landed: $out"
+out=$("$ps" landed ld x); [ $? = 0 ] && [ ! -e "$mk" ] && ok || bad "landed after the commit: $out"
+git reset -q --hard "$h0"; rm -f "$mk"
+# T3: the marker cannot be written (a directory in its place, or a read-only .dflow): land fails, says
+# what to undo by hand, and records no .landed row
+mkdir "$mk"; cp .dflow/ld.landed "$t/ldrec" 2>/dev/null || : > "$t/ldrec"
+out=$("$ps" land ld x); rc=$?
+[ $rc = 1 ] && echo "$out" | grep -q "^FAIL landed x into the working tree but could not record" && echo "$out" | grep -q "app/ldx.py" && cmp -s "$t/ldrec" .dflow/ld.landed 2>/dev/null && ok || bad "land with an unwritable marker: $rc $out"
+rmdir "$mk" 2>/dev/null; git reset -q --hard "$h0"; rm -f app/ldx.py; [ -s "$t/ldrec" ] && cp "$t/ldrec" .dflow/ld.landed
+chmod a-w .dflow
+out=$("$ps" land ld x); rc=$?
+chmod u+w .dflow
+[ $rc = 1 ] && echo "$out" | grep -q "could not record" && [ ! -e "$mk" ] && ok || bad "land with a read-only .dflow: $rc $out"
+git reset -q --hard "$h0"; rm -f app/ldx.py
+# T4: land checks the changed files against the manifest's allow and protect ("protect: -" is none)
+printf 'id\tdeps\tpaths\tstate\tbase\tagent\tbranch\tdispatched_at\ttries\tlanded\n' > .dflow/mf.units.tsv
+git worktree add -q -b mf-a "$t/mfa" "$h0"; ( cd "$t/mfa"; mkdir -p notes; echo N > notes/n.md; git add -A; git commit -qm mfa )
+git worktree add -q -b mf-b "$t/mfb" "$h0"; ( cd "$t/mfb"; echo S > app/secret.py; git add -A; git commit -qm mfb )
+printf 'a\t-\tnotes/*\tdispatched\t%s\t-\tmf-a\t-\t0\t-\nb\t-\tapp/*\tdispatched\t%s\t-\tmf-b\t-\t0\t-\n' "$h0" "$h0" >> .dflow/mf.units.tsv
+printf 'slug: mf\nbase: %s\nallow: app/*\nprotect: app/secret*\n\n# goal\n' "$h0" > .dflow/mf.md
+out=$("$ps" land mf a); rc=$?; [ $rc = 1 ] && echo "$out" | grep -q "OUTSIDE-ALLOW notes/n.md" && [ ! -e notes/n.md ] && ok || bad "land outside the manifest's allow: $rc $out"
+"$ps" unland mf a >/dev/null 2>&1
+out=$("$ps" land mf b); rc=$?; [ $rc = 1 ] && echo "$out" | grep -q "PROTECTED app/secret.py" && [ ! -e app/secret.py ] && ok || bad "land of a protected file: $rc $out"
+"$ps" unland mf b >/dev/null 2>&1
+printf 'slug: mf\nbase: %s\nallow: app/*\nprotect: -\n\n# goal\n' "$h0" > .dflow/mf.md
+expect 0 "land with protect: -" "$ps" land mf b
+"$ps" unland mf b >/dev/null
 # S4: land runs the scope check itself: a change outside the unit's paths is refused without scope
 out=$("$ps" land ld o); [ $? = 1 ] && echo "$out" | grep -q "OUTSIDE tests/o.py" && [ ! -e app/o.py ] && [ ! -e "$mk" ] && ok || bad "land outside scope: $out"
 # S4: a 多线 unit (carrier set, not prep) lands only at a <sha> that ledger check passes, with a valid
@@ -236,8 +274,27 @@ out=$("$ps" land ml m "$sm"); [ $? = 1 ] && echo "$out" | grep -q "ledger" && ec
 echo "RECEIPT m 1 done $sm" > .dflow/ml/reports/m-1.md
 out=$("$ps" land ml m "$sm"); [ $? = 1 ] && echo "$out" | grep -q "ledger" && ! echo "$out" | grep -q "receipt" && [ ! -e app/m.py ] && ok || bad "多线 land without a ledger pass: $out"
 "$here/lines.sh" ledger record ml m 1 "$sm" pass behavior claude repro.log >/dev/null
+# T4: a 多线 line needs the manifest with allow:
+out=$("$ps" land ml m "$sm"); [ $? = 1 ] && echo "$out" | grep -q "manifest" && [ ! -e app/m.py ] && ok || bad "多线 land without a manifest: $out"
+"$ps" unland ml m >/dev/null 2>&1
+printf 'slug: ml\nbase: %s\nallow: app/*\nprotect: -\n\n# goal\n' "$h0" > .dflow/ml.md
 out=$("$ps" land ml m "$sm"); [ $? = 0 ] && [ "$(cat app/m.py)" = M ] && ok || bad "多线 land with a pass and a receipt: $out"
 "$ps" unland ml m >/dev/null
+# T4: the receipt names the very commit that lands, delivered done or partial; a stop-unconfirmed line does not land
+echo "RECEIPT m 1 done $h0" > .dflow/ml/reports/m-1.md
+out=$("$ps" land ml m "$sm"); [ $? = 1 ] && echo "$out" | grep -q "receipt" && [ ! -e app/m.py ] && ok || bad "多线 land of a sha the receipt does not name: $out"
+"$ps" unland ml m >/dev/null 2>&1
+echo "RECEIPT m 1 blocked $sm" > .dflow/ml/reports/m-1.md
+out=$("$ps" land ml m "$sm"); [ $? = 1 ] && echo "$out" | grep -q "blocked" && [ ! -e app/m.py ] && ok || bad "多线 land on a blocked receipt: $out"
+"$ps" unland ml m >/dev/null 2>&1
+echo "RECEIPT m 1 partial ${sm:0:12}" > .dflow/ml/reports/m-1.md
+expect 0 "多线 land on a partial receipt naming the sha by prefix" "$ps" land ml m "$sm"
+"$ps" unland ml m >/dev/null
+echo "RECEIPT m 1 done $sm" > .dflow/ml/reports/m-1.md
+"$here/lines.sh" line set ml m state=stop-unconfirmed >/dev/null
+out=$("$ps" land ml m "$sm"); [ $? = 1 ] && echo "$out" | grep -q "stop-unconfirmed" && [ ! -e app/m.py ] && ok || bad "多线 land of a stop-unconfirmed line: $out"
+"$ps" unland ml m >/dev/null 2>&1
+"$here/lines.sh" line set ml m state=dispatched >/dev/null
 echo "RECEIPT m 1 done docs/audit.md" > .dflow/ml/reports/m-1.md
 out=$("$ps" land ml m "$sm"); [ $? = 1 ] && echo "$out" | grep -q "receipt" && [ ! -e app/m.py ] && ok || bad "多线 land on a read-only receipt: $out"
 "$here/lines.sh" line set ml m carrier=prep >/dev/null

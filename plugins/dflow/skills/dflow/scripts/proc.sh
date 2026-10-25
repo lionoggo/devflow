@@ -12,19 +12,25 @@
 #                                alive and its identity unknown), or while another start for <out>
 #                                holds <out>.starting. DFLOW_PROC_LIMIT=<seconds>: the session leader
 #                                (the forked wrapper) keeps that deadline itself, with or without
-#                                proc_wait: past it, it appends "timeout after <N>s" to <out>, writes
-#                                124 to <out>.exit, then TERMs its process group and KILLs what is left
-#                                after a few seconds. Unset: no deadline of its own. The command gets
+#                                proc_wait: past it, it ignores TERM, TERMs its process group, waits up
+#                                to 5s, KILLs each other member still there and polls (up to 10s more)
+#                                until the group holds only itself; then it appends "timeout after <N>s"
+#                                to <out>, writes 124 to <out>.exit and exits. Members still left at the
+#                                end: it writes <out>.timeout "timeout after <N>s, not stopped: <pids>",
+#                                no .exit, and stays alive (proc_stop stops it). Unset: no deadline of
+#                                its own. The command gets
 #                                DFLOW_HOLDER_PID=<the leader's pid> (the recorded pid), not the limit
 #   proc_wait <out> [secs] [limit]
 #                                wait up to <secs> (default 50) for the run to end; return 0
-#                                "ended exit <code>", 3 "running" or "running (identity unverified)",
+#                                "ended exit <code>", 3 "running", "running (identity unverified)" or
+#                                "running (timeout, not stopped)" (<out>.timeout, no <out>.exit, leader not gone),
 #                                1 "ended lost" (no exit code, and the recorded pid is gone or is
 #                                provably another process) or "ended timeout" (over <limit> seconds
 #                                since start, default 1200; its process group is stopped, or the line
 #                                says it is still running or was not stopped)
-#   proc_peek <out>              look once, never signal: 0 "ended exit <code>", 3 "running" or
-#                                "running (identity unverified)", 1 "ended lost"
+#   proc_peek <out>              look once, never signal: 0 "ended exit <code>", 3 "running",
+#                                "running (identity unverified)" or "running (timeout, not stopped)",
+#                                1 "ended lost"
 #   proc_stop <out>              stop the run's process group after the identity check and confirm it
 #                                is gone: return 0 "ok stopped" / "ok not running", or 1
 #                                "not stopped: <reason>" (nothing is signalled when the check fails)
@@ -93,7 +99,7 @@ proc_start() {
         [ $rc != 0 ] || { rmdir "$out.starting"; echo "FAIL $out is still running as pid $_pp; not started again" >&2; return 1; }
         [ $rc != 2 ] || { rmdir "$out.starting"; echo "FAIL $out: pid $_pp is alive and cannot be checked as this run (identity unverified); not started again, nothing overwritten" >&2; return 1; }
     fi
-    rm -f "$out.exit" "$out.pid"
+    rm -f "$out.exit" "$out.pid" "$out.timeout"
     DFLOW_PROC_LIMIT="${DFLOW_PROC_LIMIT:-}" python3 -I - "$out" "$@" 3<&0 <<'PY'
 import os, signal, subprocess, sys, time
 out, cmd = sys.argv[1], sys.argv[2:]
@@ -132,18 +138,52 @@ if p is not None:
     try:
         r = p.wait(timeout=int(limit) if limit else None)
     except subprocess.TimeoutExpired:  # the deadline is kept here, whether or not anyone calls proc_wait
-        with open(out, "ab") as o:
-            o.write(("timeout after %ss\n" % limit).encode())
-        with open(out + ".exit", "w") as f:
-            f.write("124\n")
+        # .exit is written only once the group holds nothing but this leader
+        me = os.getpid()
+        def others():
+            p.poll()  # reap the command, so it does not linger as a zombie of this leader
+            try:
+                q = subprocess.Popen(["ps", "-A", "-o", "pid=,ppid=,pgid=,stat="], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                text = q.communicate()[0]
+            except OSError:
+                return None
+            if q.returncode != 0:
+                return None
+            left = []
+            for line in text.decode(errors="replace").splitlines():
+                f = line.split()  # this ps (and what it runs) is a member too, and not the run's
+                if len(f) >= 4 and f[2] == str(me) and f[0] not in (str(me), str(q.pid)) and f[1] != str(q.pid) and not f[3].startswith("Z"):
+                    left.append(f[0])
+            return left
+        def settle(secs):  # poll until no other member is left, up to <secs>; the members left
+            end = time.time() + secs
+            while True:
+                left = others()
+                if left == [] or time.time() >= end:
+                    return left
+                time.sleep(0.2)
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         os.killpg(0, signal.SIGTERM)
-        try:
-            p.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            pass
-        time.sleep(0.2)
-        os.killpg(0, signal.SIGKILL)  # what ignored TERM, and this leader with it
+        left = settle(5)
+        end = time.time() + 10
+        while left != [] and time.time() < end:
+            for q in left or []:
+                try:
+                    os.kill(int(q), signal.SIGKILL)
+                except (OSError, ValueError):
+                    pass
+            if left is None:  # no ps: fall back to the group as a whole, which would take this leader too
+                break
+            left = settle(min(1, max(0, end - time.time())))
+        if left != []:
+            with open(out + ".timeout.tmp", "w") as f:
+                f.write("timeout after %ss, not stopped: %s\n" % (limit, " ".join(left) if left else "(ps unavailable)"))
+            os.rename(out + ".timeout.tmp", out + ".timeout")
+            while True:  # stay, so the run keeps an identity proc_stop can check and stop
+                time.sleep(3600)
+        with open(out, "ab") as o:
+            o.write(("timeout after %ss\n" % limit).encode())
+        r = 124
 with open(out + ".exit", "w") as f:
     f.write("%d\n" % r)
 PY
@@ -156,12 +196,14 @@ proc_wait() {
     end=$(( $(date +%s) + secs ))
     while [ ! -f "$out.exit" ] && [ "$(date +%s)" -lt "$end" ]; do
         _proc_id; [ $? = 1 ] && break
+        [ ! -f "$out.timeout" ] || break
         [ $(( $(date +%s) - _ps )) -lt "$limit" ] || break
         sleep 2
     done
     if [ -f "$out.exit" ]; then echo "ended exit $(cat "$out.exit")"; return 0; fi
     _proc_id; id=$?
     [ $id != 1 ] || { echo "ended lost"; return 1; }
+    [ ! -f "$out.timeout" ] || { echo "running (timeout, not stopped)"; return 3; }
     if [ $(( $(date +%s) - _ps )) -ge "$limit" ]; then
         [ $id = 0 ] || { echo "ended timeout, not stopped: cannot check that $_pp is this run"; return 1; }
         if _proc_kill; then echo "ended timeout"; else echo "ended timeout, still running $_pp"; fi
@@ -171,13 +213,12 @@ proc_wait() {
 }
 
 proc_peek() {
-    local out; out=$(proc_canon "$1"); _proc_load "$out"
+    local out id; out=$(proc_canon "$1"); _proc_load "$out"
     if [ -f "$out.exit" ]; then echo "ended exit $(cat "$out.exit")"; return 0; fi
-    _proc_id; case $? in
-    1) echo "ended lost"; return 1 ;;
-    2) echo "running (identity unverified)"; return 3 ;;
-    esac
-    echo "running"; return 3
+    _proc_id; id=$?
+    [ $id != 1 ] || { echo "ended lost"; return 1; }
+    [ ! -f "$out.timeout" ] || { echo "running (timeout, not stopped)"; return 3; }
+    [ $id = 0 ] && echo "running" || echo "running (identity unverified)"; return 3
 }
 
 proc_stop() {

@@ -100,8 +100,25 @@ waitexit "$t/lim" 12; el=$(( $(date +%s) - s ))
 grep -qx "started" "$t/lim" && grep -qx "timeout after 2s" "$t/lim" && ok || bad "limit 2: output $(cat "$t/lim")"
 gone "$pid" 16 && ok || bad "limit 2: process group $pid still there"
 pid=$(DFLOW_PROC_LIMIT=1 proc_start "$t/lim2" sh -c 'trap "" TERM; sleep 30 & wait; sleep 30' < /dev/null); mine+=("$pid")
-waitexit "$t/lim2" 12 && [ "$(cat "$t/lim2.exit")" = 124 ] && gone "$pid" 20 && ok || bad "limit on a TERM-proof run: exit $(cat "$t/lim2.exit" 2>/dev/null), group $(kill -0 -- -"$pid" 2>/dev/null && echo alive || echo gone)"
+waitexit "$t/lim2" 30 && [ "$(cat "$t/lim2.exit")" = 124 ] && gone "$pid" 20 && ok || bad "limit on a TERM-proof run: exit $(cat "$t/lim2.exit" 2>/dev/null), group $(kill -0 -- -"$pid" 2>/dev/null && echo alive || echo gone)"
 out=$(DFLOW_PROC_LIMIT=soon proc_start "$t/lim3" sleep 1 < /dev/null 2>&1); [ $? = 2 ] && [ ! -e "$t/lim3.pid" ] && [ ! -e "$t/lim3.starting" ] && ok || bad "bad DFLOW_PROC_LIMIT accepted: $out"
+# T2: .exit appears only after the group is stopped. A run that ignores TERM and forks: the moment
+# .exit is there, the group holds no process but the leader (its last step is to write .exit and exit)
+others() { /bin/ps -A -o pid=,pgid=,stat= | awk -v g="$1" '$2 == g && $1 != g && $3 !~ /^Z/ { print $1 }' | tr '\n' ' '; }
+pid=$(DFLOW_PROC_LIMIT=1 proc_start "$t/lim4" sh -c 'trap "" TERM; (sleep 30; echo late) & sleep 30 & wait; sleep 30' < /dev/null); mine+=("$pid")
+left="never"; for i in $(seq 1 400); do [ -f "$t/lim4.exit" ] && { left=$(others "$pid"); break; }; sleep 0.05; done
+[ "$left" = "" ] && [ "$(cat "$t/lim4.exit")" = 124 ] && grep -qx "timeout after 1s" "$t/lim4" && ok || bad "timeout: .exit written while the group still had [$left]"
+gone "$pid" 10 && ok || bad "timeout: group $pid left after .exit"
+# T2: a group that cannot be confirmed stopped (a ps that keeps reporting one more member): no .exit,
+# <out>.timeout names it, the leader stays; wait and peek say "running (timeout, not stopped)" (3); stop still works
+mkdir -p "$t/stuckps"; printf '#!/bin/sh\n/bin/ps "$@"; rc=$?\n[ "$1" = -A ] && echo "99999999 1 $(/bin/ps -o pgid= -p $$ | tr -d " ") S"\nexit $rc\n' > "$t/stuckps/ps"; chmod +x "$t/stuckps/ps"
+pid=$(PATH="$t/stuckps:$PATH" DFLOW_PROC_LIMIT=1 proc_start "$t/lim5" sleep 60 < /dev/null); mine+=("$pid")
+for i in $(seq 1 60); do [ -f "$t/lim5.timeout" ] && break; sleep 0.5; done
+[ "$(cat "$t/lim5.timeout" 2>/dev/null)" = "timeout after 1s, not stopped: 99999999" ] && [ ! -e "$t/lim5.exit" ] && kill -0 "$pid" 2>/dev/null && ok || bad "unconfirmed stop: timeout $(cat "$t/lim5.timeout" 2>/dev/null), exit $(cat "$t/lim5.exit" 2>/dev/null)"
+out=$(proc_peek "$t/lim5"); [ $? = 3 ] && [ "$out" = "running (timeout, not stopped)" ] && ok || bad "peek on an unconfirmed stop: $out"
+out=$(proc_wait "$t/lim5" 1); [ $? = 3 ] && [ "$out" = "running (timeout, not stopped)" ] && ok || bad "wait on an unconfirmed stop: $out"
+out=$(proc_start "$t/lim5" sh -c 'echo again' < /dev/null 2>&1); [ $? = 1 ] && ok || bad "start over an unconfirmed stop: $out"
+out=$(proc_stop "$t/lim5"); [ "$out" = "ok stopped" ] && ! kill -0 -- -"$pid" 2>/dev/null && ok || bad "stop after an unconfirmed stop: $out"
 # without DFLOW_PROC_LIMIT: no deadline of its own, as before
 pid=$(proc_start "$t/nolim" sh -c 'sleep 4; exit 5' < /dev/null); mine+=("$pid")
 sleep 3; [ ! -f "$t/nolim.exit" ] && kill -0 "$pid" 2>/dev/null && ok || bad "a run without a limit ended early"

@@ -25,16 +25,28 @@
 #                         `cherry-pick -n base..branch`; on conflict abort.
 #                         With <sha> (scope too): it must name one commit, and the unit branch's head must be
 #                         exactly that commit; a branch that moved after <sha> was verified is refused.
+#                         Every changed file must also be inside the manifest's allow and outside its protect
+#                         (as overlap reads them; "protect: -" is none). Without a manifest or its allow:, a
+#                         plain unit skips this and a 多线 line is refused.
 #                         A 多线 line (a carrier column with a value other than "-" or prep) also needs <sha>,
-#                         `lines.sh ledger check <slug> <id> <sha>` passing, and a valid receipt of its attempt
-#                         that names a commit; a refusal lists each missing item.
+#                         `lines.sh ledger check <slug> <id> <sha>` passing, a state other than stop-unconfirmed,
+#                         and a valid receipt of its attempt, done or partial, whose commit is <sha> (full sha
+#                         compared); a refusal lists each missing item.
 #                         Refused while .dflow/<slug>.landing is pending at the current HEAD.
-#                         A land records the source commit in .dflow/<slug>.landed (id, sha; last row wins), and
-#                         writes .dflow/<slug>.landing: "uid", "head" (HEAD at the land), "source" rows, then
-#                         the changed files as git name-status rows (A added, M modified, D deleted)
+#                         A land writes .dflow/<slug>.landing: "uid", "head" (HEAD at the land), "source" rows,
+#                         then one row per changed file: status (A added, M modified, D deleted), path, and the
+#                         file's blob after the land (git hash-object; "-" for D). Then it records the source
+#                         commit in .dflow/<slug>.landed (id, sha; last row wins). If the marker cannot be
+#                         written: exit 1, "FAIL landed <id> into the working tree but could not record
+#                         <marker>; undo by hand: <files>", and no .landed row
+#   landed   <slug> <id>  close the land of <id> once it is committed: removes .landing only when it is this
+#                         unit's and HEAD is no longer the one it records; else refused
 #   unland   <slug> <id>  undo an uncommitted land: only with a .landing of this unit at the current HEAD
-#                         (else refused, nothing touched); restore its M/D files from HEAD, delete its A
-#                         files, remove the record. Other changes left are listed (exit 1), never touched
+#                         and every listed file still as the land left it (A/M: the recorded blob; D: absent)
+#                         or already as HEAD has it (nothing to undo); else refused, nothing touched, the
+#                         files that differ listed. Restores its M/D files
+#                         from HEAD, deletes its A files, removes the record. Other changes left are listed
+#                         (exit 1), never touched
 #   cleanup  <slug> [--ignored-ok]
 #                         remove worktrees/branches only of units in state landed, done, dead, stopped
 #                         or planned whose worktree has no uncommitted, untracked, or ignored files;
@@ -98,6 +110,15 @@ scope_check() { # prints OUTSIDE lines; 1 when any
     done <<< "$(git diff --name-only "$base" "$tip")"
     return $bad
 }
+manifest_check() { # changed files base..tip against the manifest's allow and protect; prints OUTSIDE-ALLOW/PROTECTED lines; 1 when any
+    local f p bad=0
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        match_any "$f" $allow || { echo "OUTSIDE-ALLOW $f"; bad=1; }
+        for p in $protect; do case $f in $p) echo "PROTECTED $f"; bad=1; break ;; esac; done
+    done <<< "$(git diff --name-only "$base" "$tip")"
+    return $bad
+}
 mval() { awk -F'\t' -v k="$1" '$1 == k { print $2; exit }' "$marker" 2>/dev/null; }
 
 case $cmd in
@@ -154,9 +175,19 @@ land)
         die "the land of unit $(mval uid) at HEAD $now is still pending ($marker): commit it, or parallel.sh unland $slug $(mval uid), first"
     fi
     out=$(scope_check) || { echo "FAIL $uid changes files outside its paths; not landed:"; echo "$out"; exit 1; }
-    car=$(col "$uid" carrier)
-    if [ -n "$car" ] && [ "$car" != - ] && [ "$car" != prep ]; then # a 多线 line: verified sha, valid receipt
+    car=$(col "$uid" carrier); multi=""
+    [ -n "$car" ] && [ "$car" != - ] && [ "$car" != prep ] && multi=1
+    allow=""; [ -f "$man" ] && allow=$(field "$man" allow); protect=$(field "$man" protect); [ "$protect" != - ] || protect=""
+    if [ -n "$allow" ]; then
+        out=$(manifest_check) || { echo "FAIL $uid changes files the manifest $man does not allow; not landed:"; echo "$out"; exit 1; }
+    fi
+    if [ -n "$multi" ]; then # a 多线 line: manifest, verified sha, a receipt of that very commit, not stop-unconfirmed
         miss=""
+        [ -n "$allow" ] || miss="$miss
+  manifest: $man with an allow: line in its leading key block, to check the line's files against"
+        st=$(col "$uid" state)
+        [ "$st" != stop-unconfirmed ] || miss="$miss
+  state: $uid is stop-unconfirmed (its stop is not confirmed; reconcile it first, it does not land)"
         if [ -z "$want" ]; then miss="$miss
   <sha>: a 多线 line (carrier $car) lands only at the verified commit; parallel.sh land $slug $uid <sha>"
         else
@@ -165,8 +196,15 @@ land)
         fi
         att=$(col "$uid" attempt)
         if r=$("$here/lines.sh" receipt "$slug" "$uid" "$att" 2>&1); then
-            rf=${r#* }; { printf '%s' "$rf" | grep -Eq '^[0-9a-f]{4,40}$' && git rev-parse -q --verify "$rf^{commit}" >/dev/null 2>&1; } || miss="$miss
-  receipt of a commit: reports/$uid-$att.md delivers \"$r\", not a commit (a read-only or blocked delivery does not land)"
+            rs=${r%% *}; rf=${r#* }; rc=""
+            printf '%s' "$rf" | grep -Eq '^[0-9a-f]{4,40}$' && rc=$(git rev-parse -q --verify "$rf^{commit}" 2>/dev/null)
+            case $rs in done|partial) ;; *) miss="$miss
+  receipt done or partial: reports/$uid-$att.md delivers \"$r\" (a blocked delivery does not land)" ;; esac
+            if [ -z "$rc" ]; then miss="$miss
+  receipt of a commit: reports/$uid-$att.md delivers \"$r\", not a commit (a read-only delivery does not land)"
+            elif [ -n "$want" ] && [ "$rc" != "$tip" ]; then miss="$miss
+  receipt of this commit: reports/$uid-$att.md delivers $rc, not $tip that would land"
+            fi
         else miss="$miss
   receipt: attempt ${att:-?}: $r"; fi
         [ -z "$miss" ] || { echo "FAIL 多线 line $uid not landed; missing:$miss"; exit 1; }
@@ -174,8 +212,15 @@ land)
     d=$(dirty); [ -z "$d" ] || { echo "FAIL working tree not clean; refusing to land:"; echo "$d"; exit 1; }
     if err=$(git cherry-pick -n "$base..$tip" 2>&1 >/dev/null); then
         src=$(git rev-parse "$tip^{commit}")
-        { printf 'uid\t%s\nhead\t%s\nsource\t%s\n' "$uid" "$now" "$src"; git diff --cached --no-renames --name-status; } > "$marker.tmp.$$" &&
-            mv -f "$marker.tmp.$$" "$marker" || echo "FAIL could not write $marker; unland will refuse this land (undo it by hand)"
+        # each A/M file with the blob it has right after the land (unland undoes only that content); D "-"
+        { printf 'uid\t%s\nhead\t%s\nsource\t%s\n' "$uid" "$now" "$src"
+          git diff --cached --no-renames --name-status | while IFS=$'\t' read -r st f; do
+              if [ "$st" = D ]; then h=-; else h=$(git hash-object -- "$f") || exit 1; fi
+              printf '%s\t%s\t%s\n' "$st" "$f" "$h"
+          done; } 2>/dev/null > "$marker.tmp.$$" && [ ! -d "$marker" ] && mv -f "$marker.tmp.$$" "$marker" 2>/dev/null || {
+            rm -f "$marker.tmp.$$" 2>/dev/null
+            echo "FAIL landed $uid into the working tree but could not record $marker; undo by hand: $(git diff --cached --name-only | tr '\n' ' ' | sed 's/ $//')"
+            exit 1; }
         printf '%s\t%s\n' "$uid" "$src" >> "$landrec"
         echo "ok landed $uid into the working tree; changed:"; git diff --cached --name-status
     else
@@ -208,10 +253,29 @@ unland)
     [ -f "$marker" ] || die "no record of a land to undo ($marker): nothing touched (it is written by a land that succeeded; the tree's changes are not a land's)"
     mu=$(mval uid); mh=$(mval head); now=$(git rev-parse HEAD)
     [ "$mu" = "$uid" ] || die "the pending land belongs to unit ${mu:-?}, not $uid; nothing touched"
-    [ "$mh" = "$now" ] || die "HEAD is $now, not $mh where $uid landed: it was committed (or HEAD moved) since; nothing touched"
-    files=$(awk -F'\t' '$1 ~ /^[AMDT]$/ { print $1 "\t" $2 }' "$marker")
+    [ "$mh" = "$now" ] || die "HEAD is $now, not $mh where $uid landed: it was committed (or HEAD moved) since; nothing touched. 提交后请运行 landed 关闭 (parallel.sh landed $slug $uid)"
+    files=$(awk -F'\t' '$1 ~ /^[AMDT]$/ { print $1 "\t" $2 "\t" $3 }' "$marker")
+    # every file still holds what the land put there, or is already back as HEAD has it (undoing it
+    # changes nothing); anything else is someone's later change, and then nothing is undone
+    changed=""
+    while IFS=$'\t' read -r st f h; do
+        [ -n "$f" ] || continue
+        cur=-; { [ -e "$f" ] || [ -L "$f" ]; } && cur=$(git hash-object -- "$f" 2>/dev/null || echo "?")
+        was=$(git rev-parse -q --verify "HEAD:$f" 2>/dev/null || echo -)
+        [ -n "$h" ] && { [ "$cur" = "$h" ] || [ "$cur" = "$was" ]; } && continue
+        case $st:$cur in
+        D:-) ;;
+        D:*) changed="$changed
+  $f (deleted by the land, now there again)" ;;
+        *:-) changed="$changed
+  $f (gone since the land)" ;;
+        *) changed="$changed
+  $f (changed since the land${h:+; landed blob $h})" ;;
+        esac
+    done <<< "$files"
+    [ -z "$changed" ] || { echo "FAIL not undoing the land of $uid: these files no longer hold what it landed (nothing touched):$changed"; exit 1; }
     added=""
-    while IFS=$'\t' read -r st f; do
+    while IFS=$'\t' read -r st f h; do
         [ -n "$f" ] || continue
         if [ "$st" = A ]; then git rm -q --cached --ignore-unmatch -- "$f"; rm -f -- "$f"; added="$added $f"
         else git restore --source=HEAD --staged --worktree -- "$f"; fi
@@ -220,6 +284,14 @@ unland)
     echo "ok undid land of $uid"; [ -z "$added" ] || echo "deleted:$added"
     left=$(dirty)
     [ -z "$left" ] || { echo "FAIL tree still dirty with files the land did not change (left in place):"; echo "$left"; exit 1; } ;;
+landed)
+    need_table; [ -n "$uid" ] || usage
+    [ -f "$marker" ] || die "no pending land record ($marker); nothing to close"
+    mu=$(mval uid); mh=$(mval head); now=$(git rev-parse HEAD)
+    [ "$mu" = "$uid" ] || die "the pending land belongs to unit ${mu:-?}, not $uid; not closed"
+    [ "$mh" != "$now" ] || die "HEAD is still $mh where $uid landed: commit the land first; not closed"
+    rm -f "$marker" || die "could not remove $marker"
+    echo "ok closed the land of $uid (HEAD $mh -> $now)" ;;
 cleanup)
     [ -z "$uid" ] || [ "$uid" = --ignored-ok ] || die "unknown cleanup option: $uid"
     need_table; wl=$(git worktree list --porcelain); bad=0
