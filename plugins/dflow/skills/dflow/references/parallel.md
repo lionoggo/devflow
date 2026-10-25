@@ -73,7 +73,10 @@ order. In Codex the steps are the same with the tools in
       the main tree (it runs the scope check itself too). It refuses when the branch head is no longer that SHA
       (the branch moved after the report): the unit is not done as
       reported; read its final report again, or send it back. A conflict
-      aborts cleanly and sends the unit back.
+      aborts cleanly and sends the unit back. `could not record <marker>`
+      is the one refusal after which the code did land: do not land again
+      and do not unland (it has no record to undo); check the listed
+      files against the unit's SHA and restore them by hand.
    4. In the main tree run the unit's checks, every finished stage's
       conditions, and the protected checks, leaving no files behind
       (`PYTHONDONTWRITEBYTECODE=1`, output outside the repo): an untracked
