@@ -8,6 +8,7 @@
 #                 (a 多线 land writes "commit <new sha> from <source sha>": the new sha is the logged one)
 #
 # Usage: run-state.sh claim|check|caffeinate|release|scope <slug>
+#        run-state.sh refresh <slug> <old manifest sha256>
 #   claim       take the lease for this session; refused while another live agent process
 #               (claude or codex) holds it, or while the holder pid is alive and ps cannot tell
 #               what it is, and refused when this session's own pid is unknown or not running;
@@ -21,12 +22,16 @@
 #   check       per-round checks; exit 0 ok, 1 stop and report, 3 commits in base..HEAD that no
 #               row names (one "UNLOGGED <sha>" line each, oldest first), 4 deadline passed
 #   caffeinate  start `caffeinate -i` until the deadline and record its pid in the lease
+#   refresh     after an approved manifest change (claim again keeps the old hash): only when this
+#               session holds the lease and its manifest_sha256 is <old>, replace it atomically with
+#               the current manifest's hash; prints "ok refreshed <old> -> <new>". Refused, nothing
+#               changed: another session's lease, a wrong <old>, or a manifest that did not change
 #   release     stop the recorded caffeinate (only if that pid is still caffeinate), drop the lease
 #   scope       list files changed base..HEAD that are protected or outside allow; exit 1 if any
 set -u
 cmd=${1:-}; slug=${2:-}
 die() { echo "FAIL $*"; exit 1; }
-[ -n "$cmd" ] && [ -n "$slug" ] || { echo "usage: run-state.sh claim|check|caffeinate|release|scope <slug>" >&2; exit 2; }
+[ -n "$cmd" ] && [ -n "$slug" ] || { echo "usage: run-state.sh claim|check|caffeinate|release|scope <slug> | refresh <slug> <old manifest sha256>" >&2; exit 2; }
 printf '%s' "$slug" | grep -Eq '^[a-z0-9][a-z0-9-]{0,62}$' || die "slug must match [a-z0-9][a-z0-9-]{0,62}: $slug"
 root=$(git rev-parse --show-toplevel 2>/dev/null) || die "not in a git repository"
 d="$root/.dflow"; man="$d/$slug.md"; lock="$d/$slug.lock"; lease="$lock/lease"; log="$d/$slug.tsv"
@@ -146,6 +151,17 @@ p = subprocess.Popen(["caffeinate", "-i", "-t", sys.argv[1]], start_new_session=
 print(p.pid)' "$secs" 2>/dev/null) || { nohup caffeinate -i -t "$secs" >/dev/null 2>&1 & pid=$!; disown 2>/dev/null || true; }
     sed -i.bak "s/^caffeinate_pid: .*/caffeinate_pid: $pid/" "$lease" && rm -f "$lease.bak"
     echo "ok caffeinate pid $pid for ${secs}s" ;;
+refresh)
+    need_manifest; [ -f "$lease" ] || die "no lease; run claim"
+    old=${3:-}; [ -n "$old" ] || { echo "usage: run-state.sh refresh <slug> <old manifest sha256>" >&2; exit 2; }
+    owner=$(field "$lease" session)
+    [ -n "$me" ] && [ "$owner" = "$me" ] || die "lease held by session ${owner:-?}, not this one; not refreshed"
+    cur=$(field "$lease" manifest_sha256); new=$(sha "$man")
+    [ "$cur" = "$old" ] || die "the lease's manifest_sha256 is $cur, not $old; not refreshed"
+    [ "$new" != "$old" ] || die "manifest unchanged ($old); nothing to refresh"
+    sed "s/^manifest_sha256: .*/manifest_sha256: $new/" "$lease" > "$lease.tmp.$$" && mv -f "$lease.tmp.$$" "$lease" ||
+        { rm -f "$lease.tmp.$$"; die "could not rewrite $lease"; }
+    echo "ok refreshed $old -> $new" ;;
 release)
     [ -f "$lease" ] || { echo "ok no lease"; exit 0; }
     owner=$(field "$lease" session)
@@ -164,5 +180,5 @@ scope)
         [ -z "$allow" ] || [ $inside = 1 ] || { echo "OUTSIDE $f"; bad=1; }
     done <<< "$(git -C "$root" diff --name-only "$base"..HEAD)"
     [ $bad = 0 ] && echo "ok scope"; exit $bad ;;
-*) echo "usage: run-state.sh claim|check|caffeinate|release|scope <slug>" >&2; exit 2 ;;
+*) echo "usage: run-state.sh claim|check|caffeinate|release|scope <slug> | refresh <slug> <old manifest sha256>" >&2; exit 2 ;;
 esac

@@ -2,7 +2,7 @@
 # Headless worker for dflow 多线 (playbooks/lines.md): the other model, with full permissions, in the
 # line's worktree, in its own session so it outlives the call that starts it (lifecycle: proc.sh).
 # Usage:
-#   agent.sh start <slug> <id> <attempt> <brief-file> <worktree> [claude|codex]
+#   agent.sh start <slug> <id> <attempt> <brief-file> <worktree> [claude|codex] [limit-seconds]
 #                 brief on stdin; its first line must be "dflow 线 <slug>/<id>/<attempt>" for these
 #                 arguments. The attempt is claimed first with mkdir .dflow/<slug>/run/<id>-<attempt>.claim:
 #                 an attempt claimed before (or started at the same moment by another call) is refused
@@ -11,7 +11,11 @@
 #                 Claude: `claude -p --dangerously-skip-permissions`; Codex:
 #                 `codex exec --dangerously-bypass-approvals-and-sandbox -C <worktree> -`. Without a
 #                 model, the other host's: Claude from Codex, else Codex. The command also gets
-#                 DFLOW_LINE=<slug>/<id>/<attempt> and DFLOW_RECEIPT=<absolute receipt path>.
+#                 DFLOW_LINE=<slug>/<id>/<attempt>, DFLOW_RECEIPT=<absolute receipt path> and
+#                 DFLOW_HOLDER_PID=<the run's session leader pid> (the holder pid for lines.sh lock).
+#                 limit-seconds (default 7200; give the model to set it): the run's own deadline,
+#                 DFLOW_PROC_LIMIT of proc_start, kept by its session leader even if nobody waits;
+#                 past it the output ends "timeout after <N>s", the exit is 124, the group is stopped.
 #                 DFLOW_AGENT_CMD (a shell command) replaces it, for tests
 #   agent.sh wait <slug> <id> <attempt> [seconds] [limit]
 #                 proc_wait (default 50 seconds; limit default 3600 since start, then the worker's process
@@ -42,8 +46,9 @@ out="$root/.dflow/$slug/run/$uid-$att.out"
 
 case $cmd in
 start)
-    brief=${5:-}; wt=${6:-}; model=${7:-}
+    brief=${5:-}; wt=${6:-}; model=${7:-}; limit=${8:-7200}
     [ -f "$brief" ] && [ -n "$wt" ] || usage
+    printf '%s' "$limit" | grep -Eq '^[1-9][0-9]{0,6}$' || usage
     [ -d "$wt" ] || die "no worktree $wt"
     wt=$(cd "$wt" && pwd -P); brief=$(proc_canon "$brief")
     [ -n "$model" ] || { [ "$(proc_host)" = codex ] && model=claude || model=codex; }
@@ -62,7 +67,7 @@ start)
     fi
     export DFLOW_LINE="$slug/$uid/$att" DFLOW_RECEIPT="$root/.dflow/$slug/reports/$uid-$att.md"
     cd "$wt" || exit 1
-    proc_start "$out" "$@" < "$brief" ;;
+    DFLOW_PROC_LIMIT=$limit proc_start "$out" "$@" < "$brief" ;;
 wait|peek)
     if [ "$cmd" = wait ]; then st=$(proc_wait "$out" "${5:-50}" "${6:-3600}"); rc=$?
     else st=$(proc_peek "$out"); rc=$?; fi

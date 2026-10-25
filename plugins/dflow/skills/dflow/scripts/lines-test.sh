@@ -93,13 +93,23 @@ expect 2 "a later fail revokes the pass" "$ln" ledger check demo a "$s3"
 expect 0 "self pass after the fail" "$ln" ledger record demo a 3 "$s3" pass self worker "single-command: make check"
 expect 2 "self pass after a verifier's fail" "$ln" ledger check demo a "$s3"
 echo "$out" | grep -q "fail (test, codex)" && ok || bad "verifier's fail not named: $out"
-# the latest verifier row decides; a review pass is ignored (it can fail a sha, never pass it)
+# S2: on one sha a verifier's fail is final: a later behavior or test pass does not undo it (a fix is a new sha)
 expect 0 "behavior pass after the fail" "$ln" ledger record demo a 3 "$s3" pass behavior claude "repro3.log"
-expect 0 "the latest verifier pass decides" "$ln" ledger check demo a "$s3"
-expect 0 "review pass after it" "$ln" ledger record demo a 3 "$s3" pass review codex "r.out"
-expect 0 "a review pass neither counts nor overrides" "$ln" ledger check demo a "$s3"
-expect 0 "review fail after it" "$ln" ledger record demo a 3 "$s3" fail review codex "r2.out"
-expect 2 "a review fail overrides the behavior pass" "$ln" ledger check demo a "$s3"
+expect 2 "a fail on a sha is not undone by a later pass" "$ln" ledger check demo a "$s3"
+echo "$out" | grep -q "fail (test, codex)" && ok || bad "the standing fail not named: $out"
+# with no fail, the latest verifier row decides (blocked, then pass: pass); a review pass is ignored
+# (it can fail a sha, never pass it)
+echo fix4 >> a.txt; git commit -qam "a fix 4"; s4=$(git rev-parse HEAD); git reset -q --hard HEAD~1
+expect 0 "blocked on a new sha" "$ln" ledger record demo a 4 "$s4" blocked behavior claude "env.log"
+expect 2 "blocked is not a pass" "$ln" ledger check demo a "$s4"
+expect 0 "behavior pass after blocked" "$ln" ledger record demo a 4 "$s4" pass behavior claude "repro4.log"
+expect 0 "blocked then pass: the latest decides" "$ln" ledger check demo a "$s4"
+expect 0 "review pass after it" "$ln" ledger record demo a 4 "$s4" pass review codex "r.out"
+expect 0 "a review pass neither counts nor overrides" "$ln" ledger check demo a "$s4"
+expect 0 "review fail after it" "$ln" ledger record demo a 4 "$s4" fail review codex "r2.out"
+expect 2 "a review fail overrides the behavior pass" "$ln" ledger check demo a "$s4"
+expect 0 "test pass after the review fail" "$ln" ledger record demo a 4 "$s4" pass test codex "ci2.log"
+expect 2 "a review fail is final on its sha too" "$ln" ledger check demo a "$s4"
 # shas: stored in full; a path, an unknown or an ambiguous prefix is refused in record and check
 [ "$(awk -F'\t' '$1 == "a" && $2 == 2 { print $3 }' .dflow/demo/ledger.tsv)" = "$s2" ] && ok || bad "short sha not stored in full: $(cat .dflow/demo/ledger.tsv)"
 export GIT_AUTHOR_DATE=2026-01-01T00:00:00Z GIT_COMMITTER_DATE=2026-01-01T00:00:00Z GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
@@ -170,6 +180,15 @@ echo "RECEIPT e 1 done $se" > .dflow/demo/reports/e-1.md
 out=$("$ln" status demo --print)
 echo "$out" | grep -q "^| e | dispatched | - | - | 1 | - | done $se | fail @$se | pass self @${se:0:12} |" && ok || bad "board shows a self pass the verdict rejects: $(echo "$out" | grep '^| e ')"
 echo "$out" | grep -q '| 验收 | 原始最新 |' && ok || bad "board header: $(echo "$out" | grep '^| 线')"
+# S2: a behavior fail, then a test pass on the same sha: the board shows fail, as ledger check does
+git checkout -qb wf; echo f >> a.txt; git commit -qam "f try 1"; sf=$(git rev-parse HEAD); git checkout -q -
+"$ln" line set demo f state=dispatched attempt=1 paths=a.txt >/dev/null
+echo "RECEIPT f 1 done $sf" > .dflow/demo/reports/f-1.md
+"$ln" ledger record demo f 1 "$sf" fail behavior claude "repro.log" >/dev/null
+"$ln" ledger record demo f 1 "$sf" pass test codex "ci.log" >/dev/null
+expect 2 "behavior fail then test pass" "$ln" ledger check demo f "$sf"
+out=$("$ln" status demo --print)
+echo "$out" | grep -q "^| f | dispatched | - | - | 1 | - | done $sf | fail @$sf | pass test @${sf:0:12} |" && ok || bad "board after behavior fail, test pass: $(echo "$out" | grep '^| f ')"
 
 # concurrent writers keep every row (write lock + atomic replace)
 rp=(); for i in 1 2 3 4 5 6 7 8; do "$ln" ledger record demo c 1 "$base" pass test w$i "e$i" >/dev/null & rp+=($!); done; wait "${rp[@]}"
@@ -264,6 +283,15 @@ for r in "gui6 gui6.txn" "gui7.txn gui7"; do set -- $r
     t3=$("$ln" lock acquire "$1" demo/b/1 "$pb" 2>/dev/null) && "$ln" lock release "$1" "$t3" >/dev/null && ok || bad "resources $1 and $2 collide"
 done
 kill "$pb" "$pc" 2>/dev/null
+# S6: a lock held for a long-lived holder (DFLOW_HOLDER_PID, the headless line's session leader) outlasts
+# the shell calls that take and use it: refused to others while that pid lives, taken over once it is gone
+python3 -I -c 'import time; time.sleep(60)' & hold=$!; pids+=($hold); sleep 60 & pids+=($!); po=$!
+htok=$(DFLOW_HOLDER_PID=$hold sh -c '"$0" lock acquire gui8 demo/h/1 "$DFLOW_HOLDER_PID"' "$ln" 2>/dev/null) && [ -n "$htok" ] && ok || bad "acquire for DFLOW_HOLDER_PID"
+out=$(DFLOW_HOLDER_PID=$hold sh -c '"$0" lock show gui8' "$ln"); echo "$out" | grep -qx "pid: $hold" && echo "$out" | grep -qx "state: alive" && ok || bad "lock not held after the acquiring call ended: $out"
+out=$(DFLOW_HOLDER_PID=$hold sh -c '"$0" lock acquire gui8 demo/h/1 "$DFLOW_HOLDER_PID"' "$ln" 2>/dev/null); [ "$out" = "$htok" ] && ok || bad "a later call of the holder got another token: $out"
+out=$("$ln" lock acquire gui8 demo/o/1 "$po" 2>&1); [ $? = 1 ] && echo "$out" | grep -q "held by demo/h/1 (pid $hold is alive)" && ok || bad "another acquire while the holder lives: $out"
+kill "$hold"; wait "$hold" 2>/dev/null
+out=$("$ln" lock acquire gui8 demo/o/1 "$po" 2>&1); [ $? = 0 ] && echo "$out" | grep -q "took over .* from demo/h/1 (pid $hold gone)" && ok || bad "takeover after the holder exited: $out"
 
 expect 2 "usage" "$ln"
 expect 1 "bad slug" "$ln" status "../x"

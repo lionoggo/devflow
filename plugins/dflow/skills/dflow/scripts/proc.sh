@@ -10,7 +10,12 @@
 #                                ends, <out>.exit; prints the pid. Refused (return 1, nothing
 #                                overwritten) while the run recorded for <out> is alive (or its pid is
 #                                alive and its identity unknown), or while another start for <out>
-#                                holds <out>.starting
+#                                holds <out>.starting. DFLOW_PROC_LIMIT=<seconds>: the session leader
+#                                (the forked wrapper) keeps that deadline itself, with or without
+#                                proc_wait: past it, it appends "timeout after <N>s" to <out>, writes
+#                                124 to <out>.exit, then TERMs its process group and KILLs what is left
+#                                after a few seconds. Unset: no deadline of its own. The command gets
+#                                DFLOW_HOLDER_PID=<the leader's pid> (the recorded pid), not the limit
 #   proc_wait <out> [secs] [limit]
 #                                wait up to <secs> (default 50) for the run to end; return 0
 #                                "ended exit <code>", 3 "running" or "running (identity unverified)",
@@ -78,6 +83,8 @@ _proc_kill() { # TERM the group, then KILL; return 0 when the group is gone
 proc_start() {
     local out rc; out=$(proc_canon "$1"); shift
     [ $# -gt 0 ] || { echo "proc_start: no command" >&2; return 2; }
+    [ -z "${DFLOW_PROC_LIMIT:-}" ] || printf '%s' "$DFLOW_PROC_LIMIT" | grep -Eq '^[1-9][0-9]{0,6}$' ||
+        { echo "proc_start: DFLOW_PROC_LIMIT must be a whole number of seconds: $DFLOW_PROC_LIMIT" >&2; return 2; }
     # one start at a time per <out>: the loser of this mkdir touches nothing
     mkdir "$out.starting" 2>/dev/null || { echo "FAIL another start of $out is in progress ($out.starting; remove it only if no start is running)" >&2; return 1; }
     _proc_load "$out"
@@ -87,8 +94,8 @@ proc_start() {
         [ $rc != 2 ] || { rmdir "$out.starting"; echo "FAIL $out: pid $_pp is alive and cannot be checked as this run (identity unverified); not started again, nothing overwritten" >&2; return 1; }
     fi
     rm -f "$out.exit" "$out.pid"
-    python3 -I - "$out" "$@" 3<&0 <<'PY'
-import os, subprocess, sys, time
+    DFLOW_PROC_LIMIT="${DFLOW_PROC_LIMIT:-}" python3 -I - "$out" "$@" 3<&0 <<'PY'
+import os, signal, subprocess, sys, time
 out, cmd = sys.argv[1], sys.argv[2:]
 def ps(field, pid):  # as _proc_ps prints it
     try:
@@ -112,12 +119,31 @@ os.dup2(3, 4)  # the caller's stdin (fd 3), kept for the command
 os.close(3)
 for fd in (0, 1, 2):
     os.dup2(null, fd)  # release the caller's pipes so the call returns now
+limit = os.environ.pop("DFLOW_PROC_LIMIT", "")
+os.environ["DFLOW_HOLDER_PID"] = str(os.getpid())  # this leader: lives as long as the run
+p = None
 with open(out, "wb") as o:
     try:
-        r = subprocess.call(cmd, stdin=4, stdout=o, stderr=subprocess.STDOUT)
+        p = subprocess.Popen(cmd, stdin=4, stdout=o, stderr=subprocess.STDOUT)
     except OSError as e:
         o.write(("cannot start %s: %s\n" % (cmd[0], e)).encode())
         r = 127
+if p is not None:
+    try:
+        r = p.wait(timeout=int(limit) if limit else None)
+    except subprocess.TimeoutExpired:  # the deadline is kept here, whether or not anyone calls proc_wait
+        with open(out, "ab") as o:
+            o.write(("timeout after %ss\n" % limit).encode())
+        with open(out + ".exit", "w") as f:
+            f.write("124\n")
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        os.killpg(0, signal.SIGTERM)
+        try:
+            p.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        time.sleep(0.2)
+        os.killpg(0, signal.SIGKILL)  # what ignored TERM, and this leader with it
 with open(out + ".exit", "w") as f:
     f.write("%d\n" % r)
 PY

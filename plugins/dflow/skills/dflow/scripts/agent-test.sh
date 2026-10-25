@@ -101,5 +101,18 @@ mkdir -p "$t/nops"; printf '#!/bin/sh\necho "ps: operation not permitted" >&2; e
 out=$(PATH="$t/nops:$PATH" "$ag" peek demo a 14); [ "$out" = "running (identity unverified)" ] && kill -0 "$pid" 2>/dev/null && ok || bad "peek without ps: $out"
 out=$(PATH="$t/nops:$PATH" "$ag" wait demo a 14 1 1); case $out in "ended timeout, not stopped"*) kill -0 "$pid" 2>/dev/null && ok || bad "no ps: worker stopped at the limit";; *) bad "no ps at the limit: $out";; esac
 "$ag" stop demo a 14 >/dev/null
+# S5: start's 7th argument is the run's own deadline (default 7200 s), kept by its session leader with no
+# wait; the worker sees DFLOW_HOLDER_PID, that leader's pid, for resource locks
+p=$(DFLOW_AGENT_CMD='echo "holder=$DFLOW_HOLDER_PID"; sleep 30' "$ag" start demo a 15 "$(bf 15)" "$t/wa" codex 2); mine+=("$p")
+for i in $(seq 1 24); do [ -f .dflow/demo/run/a-15.out.exit ] && break; sleep 0.5; done
+[ "$(cat .dflow/demo/run/a-15.out.exit 2>/dev/null)" = 124 ] && grep -qx "timeout after 2s" .dflow/demo/run/a-15.out && ok || bad "start limit 2: exit $(cat .dflow/demo/run/a-15.out.exit 2>/dev/null): $(cat .dflow/demo/run/a-15.out)"
+grep -qx "holder=$p" .dflow/demo/run/a-15.out && ok || bad "DFLOW_HOLDER_PID is not the leader $p: $(cat .dflow/demo/run/a-15.out)"
+for i in $(seq 1 20); do kill -0 -- -"$p" 2>/dev/null || break; sleep 0.5; done
+! kill -0 -- -"$p" 2>/dev/null && ok || bad "start limit 2: group $p still there"
+out=$("$ag" wait demo a 15 1); [ $? = 1 ] && [ "$out" = "exited without receipt" ] && ok || bad "wait after the start limit: $out"
+out=$(DFLOW_AGENT_CMD='echo ran' "$ag" start demo a 16 "$(bf 16)" "$t/wa" codex soon 2>&1); [ $? = 2 ] && [ ! -e .dflow/demo/run/a-16.claim ] && ok || bad "a bad limit accepted: $out"
+p=$(DFLOW_AGENT_CMD='echo "limit=${DFLOW_PROC_LIMIT:-none}"; sleep 3' "$ag" start demo a 17 "$(bf 17)" "$t/wa" codex); mine+=("$p")
+sleep 2; [ ! -f .dflow/demo/run/a-17.out.exit ] && ok || bad "default limit ended the run early"
+"$ag" wait demo a 17 10 >/dev/null; grep -qx "limit=none" .dflow/demo/run/a-17.out && ok || bad "worker saw the limit: $(cat .dflow/demo/run/a-17.out)"
 echo "agent-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]

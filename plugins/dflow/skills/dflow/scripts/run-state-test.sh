@@ -81,6 +81,27 @@ rm -rf .dflow/demo.lock; expect 0 "claim again" "$rs" claim demo
 cp .dflow/demo.md "$t/m"; echo extra >> .dflow/demo.md
 expect 1 "manifest changed" "$rs" check demo
 cp "$t/m" .dflow/demo.md
+# S3: an approved manifest change. Claim again keeps the lease's old hash, so check still fails (as
+# before); refresh <old hash> moves it to the new one. A wrong old hash, another session, or a manifest
+# that did not change is refused and leaves the lease as it was
+oh=$(sed -n 's/^manifest_sha256: //p' .dflow/demo.lock/lease)
+cp .dflow/demo.md "$t/m3"; echo "approved: one more file" >> .dflow/demo.md
+nh=$(shasum -a 256 .dflow/demo.md | cut -d' ' -f1)
+expect 0 "claim after the change" "$rs" claim demo
+expect 1 "claim does not refresh the manifest hash" "$rs" check demo
+cp .dflow/demo.lock/lease "$t/lease3"
+out=$("$rs" refresh demo 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef 2>&1); rc=$?
+[ $rc = 1 ] && cmp -s .dflow/demo.lock/lease "$t/lease3" && ok || bad "refresh with a wrong old hash: $rc $out"
+out=$(DFLOW_SESSION_ID=s9 "$rs" refresh demo "$oh" 2>&1); rc=$?
+[ $rc = 1 ] && cmp -s .dflow/demo.lock/lease "$t/lease3" && ok || bad "refresh by another session: $rc $out"
+out=$("$rs" refresh demo "$oh" 2>&1); rc=$?
+[ $rc = 0 ] && [ "$out" = "ok refreshed $oh -> $nh" ] && grep -qx "manifest_sha256: $nh" .dflow/demo.lock/lease && ok || bad "refresh: $rc $out"
+grep -qx "session: s1" .dflow/demo.lock/lease && [ -z "$(ls -d .dflow/demo.lock/lease.* 2>/dev/null)" ] && ok || bad "refresh changed more than the hash: $(cat .dflow/demo.lock/lease)"
+expect 0 "check after refresh" "$rs" check demo
+cp .dflow/demo.lock/lease "$t/lease3"
+out=$("$rs" refresh demo "$nh" 2>&1); rc=$?
+[ $rc = 1 ] && cmp -s .dflow/demo.lock/lease "$t/lease3" && ok || bad "refresh with an unchanged manifest: $rc $out"
+cp "$t/m3" .dflow/demo.md; expect 0 "refresh back" "$rs" refresh demo "$nh"
 
 # dirty tree of unknown origin
 echo x > src/new.py; expect 1 "dirty tree" "$rs" check demo; rm src/new.py

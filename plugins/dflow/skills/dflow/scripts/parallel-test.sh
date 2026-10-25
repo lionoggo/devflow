@@ -185,6 +185,65 @@ git worktree add -q -b dflow-unit/re-x .dflow/worktrees/re-x "$head"; ( cd .dflo
 printf 'branch\tid\tpaths\tstate\tbase\ndflow-unit/re-x\tx\tapp/x.py\tdispatched\t%s\n' "$head" > .dflow/re.units.tsv
 out=$("$ps" cleanup re); echo "$out" | grep -q "KEEP x" && ! echo "$out" | grep -q "ORPHAN .*re-x" && ok || bad "orphan scan by header name: $out"
 
+# S1: land writes .dflow/<slug>.landing (uid, HEAD, the files it changed, added ones marked A); unland
+# undoes only those files, only for that unit and only while HEAD is unchanged; otherwise it refuses
+# and touches nothing
+h0=$(git rev-parse HEAD)
+[ -z "$(git status --porcelain --untracked-files=all | grep -v ' \.dflow/' | grep -v ' \.claude/worktrees/')" ] && ok || bad "test setup: main tree not clean"
+printf 'id\tdeps\tpaths\tstate\tbase\tagent\tbranch\tdispatched_at\ttries\tlanded\n' > .dflow/ld.units.tsv
+git worktree add -q -b ld-x "$t/ldx" "$h0"; ( cd "$t/ldx"; echo X > app/ldx.py; echo X2 >> app/core.py; git add -A; git commit -qm ldx )
+git worktree add -q -b ld-y "$t/ldy" "$h0"; ( cd "$t/ldy"; echo Y > app/ldy.py; git add -A; git commit -qm ldy )
+git worktree add -q -b ld-o "$t/ldo" "$h0"; ( cd "$t/ldo"; echo O > app/o.py; echo O > tests/o.py; git add -A; git commit -qm ldo )
+for u in "x app/ldx.py app/core.py" "y app/ldy.py" "o app/o.py"; do set -- $u; id=$1; shift
+    printf '%s\t-\t%s\tdispatched\t%s\t-\tld-%s\t-\t0\t-\n' "$id" "$*" "$h0" "$id" >> .dflow/ld.units.tsv; done
+# user changes in the main tree: land refuses, and a following unland keeps every one of them
+echo user >> README.md; echo note > notes.txt; echo st > staged.txt; git add staged.txt
+snap() { git status --porcelain --untracked-files=all | grep -v ' \.dflow/' | grep -v ' \.claude/worktrees/'; cat README.md notes.txt staged.txt; }
+before=$(snap)
+expect 1 "land over user changes" "$ps" land ld x
+out=$("$ps" unland ld x); rc=$?
+[ $rc = 1 ] && echo "$out" | grep -q "no record" && [ "$(snap)" = "$before" ] && ok || bad "unland after a refused land touched user changes: $rc $out; now $(snap)"
+git rm -q --cached staged.txt; rm -f staged.txt notes.txt; git checkout -q README.md
+# a normal land, then unland: the marker names the unit, HEAD and the files; unland restores a clean tree
+out=$("$ps" land ld x); rc=$?
+mk=.dflow/ld.landing
+[ $rc = 0 ] && grep -qx "$(printf 'uid\tx')" "$mk" && grep -qx "$(printf 'head\t%s' "$h0")" "$mk" && grep -qx "$(printf 'A\tapp/ldx.py')" "$mk" && grep -qx "$(printf 'M\tapp/core.py')" "$mk" && ok || bad "land marker: $rc $out; $(cat "$mk" 2>/dev/null)"
+# unland of another unit, or a second land while this one is pending, is refused and touches nothing
+out=$("$ps" unland ld y); [ $? = 1 ] && echo "$out" | grep -q "unit x" && [ -f app/ldx.py ] && [ -f "$mk" ] && ok || bad "unland of another unit: $out"
+out=$("$ps" unland ld x); rc=$?
+[ $rc = 0 ] && [ ! -e app/ldx.py ] && [ -z "$(git status --porcelain --untracked-files=all | grep -v ' \.dflow/' | grep -v ' \.claude/worktrees/')" ] && [ ! -e "$mk" ] && ok || bad "unland: $rc $out; $(git status --porcelain)"
+"$ps" land ld x >/dev/null; git reset -q --hard
+out=$("$ps" land ld y); [ $? = 1 ] && echo "$out" | grep -q "pending" && [ ! -e app/ldy.py ] && ok || bad "land while another land is pending at the same HEAD: $out"
+expect 0 "unland of a land undone by hand clears its record" "$ps" unland ld x
+# land, then commit: unland refuses (HEAD moved), the commit and tree stay
+"$ps" land ld x >/dev/null; git commit -qm "land x"; hx=$(git rev-parse HEAD)
+out=$("$ps" unland ld x); [ $? = 1 ] && echo "$out" | grep -q "committed" && [ "$(git rev-parse HEAD)" = "$hx" ] && [ -f app/ldx.py ] && [ -z "$(git status --porcelain | grep -v ' \.dflow/')" ] && ok || bad "unland after a commit: $out"
+git reset -q --hard "$h0"; rm -f "$mk"
+# a file a check made after the land is not the land's: unland leaves it and names it
+"$ps" land ld x >/dev/null; echo gen > app/gen.txt
+out=$("$ps" unland ld x); rc=$?
+[ $rc = 1 ] && [ -f app/gen.txt ] && echo "$out" | grep -q "app/gen.txt" && [ ! -e app/ldx.py ] && [ "$(git diff HEAD --name-only)" = "" ] && [ ! -e "$mk" ] && ok || bad "unland with a file the land did not make: $rc $out"
+rm -f app/gen.txt
+# S4: land runs the scope check itself: a change outside the unit's paths is refused without scope
+out=$("$ps" land ld o); [ $? = 1 ] && echo "$out" | grep -q "OUTSIDE tests/o.py" && [ ! -e app/o.py ] && [ ! -e "$mk" ] && ok || bad "land outside scope: $out"
+# S4: a 多线 unit (carrier set, not prep) lands only at a <sha> that ledger check passes, with a valid
+# receipt for its attempt that names a commit
+"$here/lines.sh" init ml >/dev/null
+git worktree add -q -b ml-m "$t/mlm" "$h0"; ( cd "$t/mlm"; echo M > app/m.py; git add -A; git commit -qm mlm ); sm=$(git -C "$t/mlm" rev-parse HEAD)
+"$here/lines.sh" line set ml m paths=app/m.py state=dispatched base="$h0" branch=ml-m carrier=headless attempt=1 >/dev/null
+out=$("$ps" land ml m); [ $? = 1 ] && echo "$out" | grep -q "^  <sha>: " && [ ! -e app/m.py ] && ok || bad "多线 land without a sha: $out"
+out=$("$ps" land ml m "$sm"); [ $? = 1 ] && echo "$out" | grep -q "ledger" && echo "$out" | grep -q "receipt" && [ ! -e app/m.py ] && ok || bad "多线 land without a ledger pass or receipt: $out"
+echo "RECEIPT m 1 done $sm" > .dflow/ml/reports/m-1.md
+out=$("$ps" land ml m "$sm"); [ $? = 1 ] && echo "$out" | grep -q "ledger" && ! echo "$out" | grep -q "receipt" && [ ! -e app/m.py ] && ok || bad "多线 land without a ledger pass: $out"
+"$here/lines.sh" ledger record ml m 1 "$sm" pass behavior claude repro.log >/dev/null
+out=$("$ps" land ml m "$sm"); [ $? = 0 ] && [ "$(cat app/m.py)" = M ] && ok || bad "多线 land with a pass and a receipt: $out"
+"$ps" unland ml m >/dev/null
+echo "RECEIPT m 1 done docs/audit.md" > .dflow/ml/reports/m-1.md
+out=$("$ps" land ml m "$sm"); [ $? = 1 ] && echo "$out" | grep -q "receipt" && [ ! -e app/m.py ] && ok || bad "多线 land on a read-only receipt: $out"
+"$here/lines.sh" line set ml m carrier=prep >/dev/null
+expect 0 "a prep line lands like a plain unit" "$ps" land ml m
+"$ps" unland ml m >/dev/null
+
 expect 2 "usage" "$ps"
 expect 1 "bad slug" "$ps" overlap "../x"
 echo "parallel-test: $pass passed, $fail failed"

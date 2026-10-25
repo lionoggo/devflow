@@ -87,5 +87,27 @@ out=$(proc_wait "$t/out9" 1); rc=$?
 out=$(proc_stop "$t/out9"); [ $? = 1 ] && kill -0 "$pid" 2>/dev/null && ok || bad "record without identity: stopped $out"
 kill -9 -- -"$pid" 2>/dev/null; sleep 0.3
 out=$(proc_peek "$t/out9"); [ "$out" = "ended lost" ] && ok || bad "record without identity, pid gone: $out"
+# S5: DFLOW_PROC_LIMIT is enforced by the session leader itself, with no proc_wait: past the limit the
+# output gets "timeout after <N>s", <out>.exit is 124, and the whole group is stopped (TERM, then KILL
+# for what ignores TERM); the identity record is the usual one
+waitexit() { local i; for i in $(seq 1 "$2"); do [ -f "$1.exit" ] && return 0; sleep 0.5; done; return 1; }
+gone() { local i; for i in $(seq 1 "$2"); do kill -0 -- -"$1" 2>/dev/null || return 0; sleep 0.5; done; return 1; }
+s=$(date +%s); pid=$(DFLOW_PROC_LIMIT=2 proc_start "$t/lim" sh -c 'echo started; sleep 30' < /dev/null); mine+=("$pid")
+sed -n 2p "$t/lim.pid" | grep -q '^lstart: .' && sed -n 3p "$t/lim.pid" | grep -qF -- "-I - $(proc_canon "$t/lim") sh -c echo started"  && ok || bad "limit run: identity record: $(cat "$t/lim.pid")"
+sleep 1; [ ! -f "$t/lim.exit" ] && ok || bad "limit run ended before its limit"
+waitexit "$t/lim" 12; el=$(( $(date +%s) - s ))
+[ "$(cat "$t/lim.exit" 2>/dev/null)" = 124 ] && [ $el -ge 2 ] && [ $el -le 5 ] && ok || bad "limit 2: exit $(cat "$t/lim.exit" 2>/dev/null) after ${el}s"
+grep -qx "started" "$t/lim" && grep -qx "timeout after 2s" "$t/lim" && ok || bad "limit 2: output $(cat "$t/lim")"
+gone "$pid" 16 && ok || bad "limit 2: process group $pid still there"
+pid=$(DFLOW_PROC_LIMIT=1 proc_start "$t/lim2" sh -c 'trap "" TERM; sleep 30 & wait; sleep 30' < /dev/null); mine+=("$pid")
+waitexit "$t/lim2" 12 && [ "$(cat "$t/lim2.exit")" = 124 ] && gone "$pid" 20 && ok || bad "limit on a TERM-proof run: exit $(cat "$t/lim2.exit" 2>/dev/null), group $(kill -0 -- -"$pid" 2>/dev/null && echo alive || echo gone)"
+out=$(DFLOW_PROC_LIMIT=soon proc_start "$t/lim3" sleep 1 < /dev/null 2>&1); [ $? = 2 ] && [ ! -e "$t/lim3.pid" ] && [ ! -e "$t/lim3.starting" ] && ok || bad "bad DFLOW_PROC_LIMIT accepted: $out"
+# without DFLOW_PROC_LIMIT: no deadline of its own, as before
+pid=$(proc_start "$t/nolim" sh -c 'sleep 4; exit 5' < /dev/null); mine+=("$pid")
+sleep 3; [ ! -f "$t/nolim.exit" ] && kill -0 "$pid" 2>/dev/null && ok || bad "a run without a limit ended early"
+out=$(proc_wait "$t/nolim" 10); [ "$out" = "ended exit 5" ] && ! grep -q timeout "$t/nolim" && ok || bad "a run without a limit: $out"
+# the command sees DFLOW_HOLDER_PID, the session leader's pid (the recorded pid), and not the limit
+pid=$(DFLOW_PROC_LIMIT=30 proc_start "$t/hp" sh -c 'echo "holder=$DFLOW_HOLDER_PID limit=${DFLOW_PROC_LIMIT:-none}"' < /dev/null); mine+=("$pid")
+proc_wait "$t/hp" 10 >/dev/null; grep -qx "holder=$pid limit=none" "$t/hp" && ok || bad "DFLOW_HOLDER_PID: $(cat "$t/hp") (leader $pid)"
 echo "proc-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]

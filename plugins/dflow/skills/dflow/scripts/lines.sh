@@ -26,8 +26,10 @@
 #                                         the full sha is stored. Anything else is refused
 #   lines.sh ledger check <slug> <id> <sha>
 #                                         0 when the verdict on that commit (full sha, exact) is a pass:
-#                                         the latest behavior/test/review row decides when there is one
-#                                         (a review pass never counts); only with none, the latest self
+#                                         any behavior/test/review fail on it is final (a later pass does
+#                                         not undo it; a fix is a new sha); with no fail, the latest
+#                                         behavior/test row decides, pass or blocked (a review pass is
+#                                         ignored); only with no such row, the latest self
 #                                         row decides, and its pass counts only with evidence
 #                                         "single-command:..." and the brief of that attempt (the table's
 #                                         brief column, or <slug>/briefs/<id>-<attempt>.md) whose first
@@ -223,9 +225,11 @@ verdict_raw() { # <id> <full sha>: "<effective>\t<reason>"; effective: pass fail
         $h["id"] != id { next }
         $h["sha"] != s { if ($h["result"] == "pass") other = other " " $h["sha"]; next }
         $h["evidence_type"] == "review" && $h["result"] == "pass" { next }  # a reading can fail a sha, never pass it
+        $h["evidence_type"] != "self" && $h["result"] == "fail" && ft == "" { ft = $h["evidence_type"]; fv = $h["verifier"] }  # a fail is final on its sha
         $h["evidence_type"] != "self" { nr = $h["result"]; nt = $h["evidence_type"]; nv = $h["verifier"]; next }
         { sr = $h["result"]; sv = $h["verifier"]; sa = $h["attempt"]; se = (index($h["evidence"], "single-command:") == 1) }
-        END { if (nr != "") {
+        END { if (ft != "") print "fail\tverdict on this sha is fail (" ft ", " fv "), final on this sha: a later pass does not undo it; a fix needs a new commit"
+              else if (nr != "") {
                   if (nr == "pass" && (nt == "behavior" || nt == "test")) print "pass\tok"
                   else if (nr == "pass") print "none\tlatest verdict on this sha is a " nt " pass, which never counts"
                   else print nr "\tlatest verdict on this sha is " nr " (" nt ", " nv ")" }
