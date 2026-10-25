@@ -8,8 +8,11 @@ rules; not its PR stack, stacker, or cloud parts). Principles: 小步可验证,
 
 `$S` is this skill's directory. A line is one unit of work given to one
 writer (a subagent, a headless agent, or a visible window) in its own
-worktree. Saying "多线" approves the worktrees and branches this playbook
-creates and removes, as "并行" does in `references/parallel.md`.
+worktree. Saying "多线" or "并行", or asking for separate worktrees, approves
+the worktrees and branches this playbook creates and removes, as "并行" does
+in `references/parallel.md`. A request routed here without any of these gets
+its frame with the line plan and "说"多线"即同意为这些线各建一个 worktree"
+before any worktree is made.
 
 Three rules carry the rest:
 - A completion is a receipt in a file, not a message. Queue it; handle it at
@@ -36,10 +39,11 @@ evidence.
 
 ## Carriers
 
-Pick by need: a same-host line with no watcher goes to a subagent; another
-model family, or work that must survive this session, goes headless; a line
-the user wants to watch or that needs a human in a window (a GUI login) is
-visible. Every carrier except the Claude subagent gets its worktree from
+Default to a background carrier: a same-host line goes to a subagent;
+another model family, or work that must survive this session, goes headless.
+A line is visible only when the user asks to watch it ("可见", "开窗口") or
+it needs a human in a window (a GUI login); to look at a background line, use
+`agent.sh peek` or `lines.sh status --print`. Every carrier except the Claude subagent gets its worktree from
 `$S/scripts/parallel.sh worktree <slug> <id>`; put the printed branch in the
 table.
 

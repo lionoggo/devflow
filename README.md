@@ -12,12 +12,20 @@
 
 ## 调用
 
-| 宿主 | 主入口 | 复盘直达 | 周报直达 | 多线 |
-|---|---|---|---|---|
-| Claude Code | `/dflow:dflow`（没有别的 `/dflow` 时也可直接 `/dflow`） | `/dflow:retro` | `/dflow:report` | `/dflow:dflow 多线 <目标>` |
-| Codex | `$dflow:dflow` | `$dflow:retro` | `$dflow:report` | `$dflow:dflow 多线 <目标>` |
+| 宿主 | 主入口 | 复盘直达 | 周报直达 |
+|---|---|---|---|
+| Claude Code | `/dflow:dflow`（没有别的 `/dflow` 时也可直接 `/dflow`） | `/dflow:retro` | `/dflow:report` |
+| Codex | `$dflow:dflow` | `$dflow:retro` | `$dflow:report` |
 
-多线把工作分成几条线，各自在独立 worktree 里跑（子 Agent、后台的另一个模型，或可见窗口），由当前会话收回执、验收、按提交号落地，账本在 `.dflow/<slug>/`。说“多线”即同意它创建和删除这些 worktree。
+多线不用点名，直接说要做的事，例如：
+
+```
+/dflow 把设计、Web、3D 三块拆开，分别交给 Claude 和 Codex 在各自 worktree 里做，做完让另一个模型验收，再按顺序合进 main
+```
+
+只说“并行”是实施内部的同宿主子 Agent；提到可见 Session、多个会话或让另一个模型做一部分时才走多线。
+
+多线把工作分成几条线，各自在独立 worktree 里跑（默认在后台：子 Agent 或另一个模型的 headless 会话；说“可见”才开窗口），由当前会话收回执、验收、按提交号落地，账本在 `.dflow/<slug>/`。说“多线”即同意它创建和删除这些 worktree。
 
 点名直达：入口后的第一个词恰好是流程的中文名或 id（见 `plugins/dflow/skills/dflow/SKILL.md` 流程表），就直接用那个流程，例如 `/dflow retro alpha`、`/dflow 复盘 全部`、`/dflow debug 登录页白屏`。只看第一个词；不是流程名时照常匹配。
 

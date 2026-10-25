@@ -62,9 +62,9 @@ Codex session that needs any of them.
 | 排查 | debug | An error, a failure, "仍然…", or a URL or screenshot plus a symptom | `playbooks/debug.md` |
 | 方案 | plan | An idea, a design, a technology choice, "业内怎么做" | `playbooks/plan.md` |
 | 评审 | review | Review a plan or code, compare two approaches | `playbooks/review.md` |
-| 实施 | build | Build from an approved plan, or "你来改"; "并行" runs its independent units in parallel | `playbooks/build.md` |
+| 实施 | build | Build from an approved plan, or "你来改"; a bare "并行" runs its independent units on same-host subagents | `playbooks/build.md` |
 | 验收 | verify | Verify, 验收, real end-to-end checks | `playbooks/verify.md` |
-| 多线 | lines | "多线", "开几条线", "分给几个 agent 跑": several lines of work, each in its own worktree, possibly on other models or in visible windows, that this session keeps owning (collects, verifies, lands) | `playbooks/lines.md` |
+| 多线 | lines | Split one job across several sessions or models, each in its own worktree, while this session keeps owning it (collects results, has another model verify, lands); e.g. "启动两个可见 Session，在不同的 worktree 中做", "让 Codex 和 Claude 各做一块，完成后你来验收合入", "三条线同时在跑", "在我同意后把任务发给对应的 Session" | `playbooks/lines.md` |
 | 无人值守 | unattended | "我要离开", "去睡了", "跑到…为止", "别停", "无人值守"; "继续无人值守 <slug>"; "暂停" during a run | `playbooks/unattended.md` |
 | 交接 | handoff | A prompt for a new session or another agent | `playbooks/handoff.md` |
 | 进展 | status | Where things are, what is next, why it stopped | `playbooks/status.md` |
@@ -85,7 +85,9 @@ is 方案; how a logged run's decisions hold up is 复盘, where things stand no
 is 进展. Split delegated work by who stays responsible, not by model or
 tool: 并行 is units of one plan inside 实施, on same-host subagents; 多线 is
 lines this session registers, collects, and lands, across models or
-sessions; 交接 hands the work over once and this session stops; 无人值守 is
+sessions. "并行" alone is 实施's 并行; "并行" together with visible
+sessions, several sessions, another model doing part of the work, or another
+model verifying it is 多线. 交接 hands the work over once and this session stops; 无人值守 is
 the loop that keeps running and pauses, and a long 多线 run uses it rather
 than a second loop. "让 Codex 审一下方案" is still 评审 (another model is
 not 多线); "交给新会话继续做" is still 交接. No match: treat it as 方案 and frame the goal and its done check
@@ -181,7 +183,8 @@ path in the reply.
 **Ask first:**
 - push, open a PR, merge, rebase, amend, reset, force, or rewrite history;
 - create, switch, or delete a worktree or branch the user did not name
-  (exception: after the user says "并行" or "多线", the worktrees and
+  (exception: after the user says "并行" or "多线" or asks for separate
+  worktrees, the worktrees and
   branches `scripts/parallel.sh`, the worktree subagents, and 多线's lines
   create and remove);
 - discard or delete work you did not create in this task, including untracked
