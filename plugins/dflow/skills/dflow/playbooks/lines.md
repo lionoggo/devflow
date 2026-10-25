@@ -51,7 +51,7 @@ table.
 |---|---|---|---|
 | subagent, Claude host | Agent with `isolation: "worktree"`, `run_in_background: true`, the brief as prompt; take the branch from the report | it wakes you and the receipt is valid | TaskStop with its id; confirmed when the tool says it stopped |
 | subagent, Codex host | `parallel.sh worktree`, then `spawn_agent` (`fork_context: false`) with the brief, its 准备 the working-directory form (`references/unit-brief.md`) | `wait_agent` returns it and the receipt is valid | `close_agent`; confirmed when it returns |
-| headless, either host | `parallel.sh worktree`, then `$S/scripts/agent.sh start <slug> <id> <attempt> <brief> <worktree> [claude\|codex]`; it refuses a brief whose first line is not `dflow 线 <slug>/<id>/<attempt>` for these arguments, and an attempt already claimed; with no model it runs the other host's model; record the pid it prints in `agent` | `agent.sh wait <slug> <id> <attempt> 50 <limit>` prints `delivered <state> <sha\|path>`; pass `<limit>` as twice the brief's time box in seconds (past it the worker is stopped when its identity checks out, and only reported when it cannot; the default is 3600) | `agent.sh stop <slug> <id> <attempt>`; exit 0 is confirmed, `not stopped: …` is not |
+| headless, either host | `parallel.sh worktree`, then `$S/scripts/agent.sh start <slug> <id> <attempt> <brief> <worktree> <claude\|codex> <limit>`, `<limit>` twice the brief's time box in seconds (default 7200): the run keeps that deadline itself, so it stops even if this session dies; it refuses a brief whose first line is not `dflow 线 <slug>/<id>/<attempt>` for these arguments, and an attempt already claimed; with no model it runs the other host's model; record the pid it prints in `agent` | `agent.sh wait <slug> <id> <attempt> 50 <limit>` prints `delivered <state> <sha\|path>`; pass the same `<limit>` as at start (past it the worker is stopped when its identity checks out, and only reported when it cannot; the default is 3600) | `agent.sh stop <slug> <id> <attempt>`; exit 0 is confirmed, `not stopped: …` is not |
 | visible, either host | `parallel.sh worktree`, then `orca agent launch --agent <claude\|codex> --worktree path:<wt> --prompt "<brief text>" --surface terminal --json` (record the terminal handle in `agent`); no Orca: `tmux new-window -c <wt> '<cmd> "<brief text>"'`, where `<cmd>` is `claude --dangerously-skip-permissions` or `codex --dangerously-bypass-approvals-and-sandbox`; neither: print the command for the user to run | `lines.sh receipt <slug> <id> <attempt>` exits 0; the window may stay open | send one stop sentence into the window (Orca terminal send per `orca-cli`, or `tmux send-keys`), or ask the user; confirmed only when its agent process is gone or the user says it stopped |
 
 Headless and visible lines run with permissions fully open, like ccy and cxy;
@@ -76,7 +76,11 @@ limit, but does not stop it; `stop` prints `not stopped: …`.
    with a pass in the ledger at its source SHA and a `commit <landed sha> from
    <source sha>` row in the log"), the number of lines, and the time budget. If one
    agent could finish it inside the budget, stop here and use the normal
-   playbook (实施, or 并行 inside it). Present the frame once; reversible
+   playbook (实施, or 并行 inside it). Split only into lines that each
+   still work, and can be verified, when landed alone; work coupled at
+   run time (one state machine, an animation and its controller, an
+   extraction and the design read from it) goes to one line, or its shared
+   contract lands first as a prep unit. Present the frame once; reversible
    prep goes on without waiting. Overnight or longer than about an hour:
    frame it as 无人值守 instead, with 多线 as its way of working (see
    **Rounds**).
@@ -126,8 +130,8 @@ limit, but does not stop it; `stop` prints `not stopped: …`.
    `stop-unconfirmed`, any other state, and a landed line whose branch has
    commits past what landed. Name the kept ones in the reply. Its ignored
    and untracked file rules are those of `references/parallel.md`. Turn repeated corrections into
-   `standing.md` lines or brief-template changes. Then run "复盘 全部" on
-   the run's logs. Leave `.dflow/<slug>/` in place: it is the postmortem.
+   `standing.md` lines or brief-template changes. Then run "复盘 <slug>" on
+   this run's log (the workers' decision rows are already in it). Leave `.dflow/<slug>/` in place: it is the postmortem.
 
 At about 70% of the time budget, dispatch nothing new and land what is
 verified.
@@ -216,8 +220,8 @@ Name each resource in `standing.md`; the brief's 资源 field gives the
 absolute path of `lines.sh`, the lock directory resolved to an absolute
 path, and the lock name.
 
-The worker takes, uses, and releases the lock in one shell command, so the
-holder is a process that ends with the use. `lock acquire` prints a token on
+A use that fits in one shell command takes, uses, and releases the lock in
+that command, so the holder is a process that ends with the use. `lock acquire` prints a token on
 success; `lock release` frees the lock only for that token, so a release
 can never free a lock someone else holds:
 
@@ -229,15 +233,33 @@ The command's exit code is the resource command's. Refused (exit 1): the
 resource step did not run and nothing is released; say so in the receipt.
 The resource command must not leave a process behind that keeps using the
 resource after the shell exits: a program that would stay open across
-commands is closed inside the same command. A lock is taken over only when
+commands is closed inside the same command.
+
+A use that spans several tool calls (a Godot or browser check driven
+through MCP) holds the lock from its first call to its last: a headless
+line passes `$DFLOW_HOLDER_PID` (its agent process, set by `agent.sh`)
+instead of `$$`, acquires before the first call, releases with the token
+after closing the app, and writes the token into its receipt notes. A
+subagent or visible line has no such pid: it uses only the one-command form,
+or the resource goes to one headless line that drives it for every line in
+turn. A resource that cannot be isolated is driven by one line at a time,
+never two. A lock is taken over only when
 its holder process is gone. The ledger's write lock
 (`.dflow/<slug>/.lock`) is separate and belongs to `lines.sh`.
 
 ## Verification
 
-- A line that writes code gets a verifier line on the other model family
+- Scale verification to the line. When its check is one cheap command, the
+  brief names it (`验证     单命令验证：<命令>`), the worker runs it and
+  reports the output, and you spot-check the receipt: no verifier line.
+  Expensive, judgment-laden (animation, game feel, a design read from code)
+  or wide-impact work gets a verifier line; a verifier line whose whole
+  product would be rerunning one command is ceremony.
+- A verifier line runs on the other model family
   than the verified line's `model` column (claude → codex, codex → claude),
-  in a fresh session. Name that model explicitly (`agent.sh start … <model>`,
+  in a fresh session. Its report goes through the acceptance items of the
+  manifest one by one, each with its evidence or "未验证"; a pass that
+  leaves an item unchecked is recorded as `blocked`, not `pass`. Name that model explicitly (`agent.sh start … <model>`,
   or the matching visible command); never rely on the default, which is
   picked against the main session's host, not against the worker.
 - A verifier line is a line of its own: id `v-<id>`, a row in the table
@@ -253,9 +275,10 @@ its holder process is gone. The ledger's write lock
   where `<id> <attempt> <sha>` are the verified line's. The SHA must name
   exactly one commit; the ledger keeps the full SHA, and a short one that
   does not resolve, or resolves to several, is refused.
-- At one SHA, when any row is not `self` (behavior, test, review), the last
-  of those decides. A `review` row (reading only) can fail a SHA but its pass
-  is ignored, so it neither passes nor overrides a behavior or test pass. Only
+- At one SHA, any `fail` that is not `self` decides: a later pass of any
+  kind never turns it back (a new SHA does). With no such fail, the last row
+  that is not `self` (behavior, test, review) decides. A `review` row
+  (reading only) can fail a SHA but its pass is ignored. Only
   when there is no such row does a `self` pass count, and only when the
   line's brief (its `brief` column, or `.dflow/<slug>/briefs/<id>-<attempt>.md`)
   has its own line `验证     单命令验证：<命令>` (a mention elsewhere, or
@@ -272,9 +295,11 @@ its holder process is gone. The ledger's write lock
 One line at a time, in dependency order:
 
 1. Fix the SHA from the receipt.
-2. `parallel.sh scope <slug> <id> <sha>`.
-3. `lines.sh ledger check <slug> <id> <sha>`: exit 0 or stop here
-   (`NOT-PASSED` means verify first).
+2. `parallel.sh scope <slug> <id> <sha>` and `lines.sh ledger check <slug>
+   <id> <sha>` to see where it stands (`NOT-PASSED` means verify first).
+3. `land` runs both checks itself, plus the receipt of the current
+   attempt, and refuses when any fails, so a skipped step 2 cannot land
+   unchecked work.
 4. `parallel.sh land <slug> <id> <sha>`: lands `base..<sha>` uncommitted
    in the main tree. It refuses when the line's branch head is no longer
    that SHA: the branch changed after verification. Log it; the branch's
@@ -293,8 +318,11 @@ One line at a time, in dependency order:
    `commit <sha>` form is what `run-state.sh check` reads, so an unattended
    round does not flag the landing as unlogged). This row and the ledger's
    pass at `<sha>` together count the line toward the done condition.
-8. Any failure from step 4 on: `parallel.sh unland <slug> <id>`, then a fix
-   line as in **Verification**.
+8. `land` itself refused or hit a conflict: nothing landed, so never
+   unland (the tree may hold the user's changes); fix the cause. A failure
+   from step 5 on: `parallel.sh unland <slug> <id>` (it undoes only the
+   files that land recorded, and refuses once the land is committed), then
+   a fix line as in **Verification**.
 
 ## When to collect
 

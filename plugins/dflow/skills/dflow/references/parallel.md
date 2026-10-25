@@ -17,7 +17,10 @@ Write four items:
 1. **First steps**: interfaces, types, shared config other units depend on.
    They go first, in order, as normal units.
 2. **Independent units**: each with the globs it writes, pairwise disjoint,
-   not depending on each other's unlanded code.
+   not depending on each other's unlanded code, and each still working and
+   verifiable when landed alone. Disjoint files are not enough: work coupled
+   at run time (one state machine, an animation and its controller) is one
+   unit, or its shared contract goes first.
 3. **Shared files**: anything two units would both edit (README, registries,
    `__init__`, a shared test entry). Take them out of the units; you edit them
    after every unit lands.
@@ -67,7 +70,7 @@ order. In Codex the steps are the same with the tools in
    2. `parallel.sh scope <slug> <id> <sha>`: ancestor check and path check
       on that SHA. A failure sends the unit back.
    3. `parallel.sh land <slug> <id> <sha>`: `base..<sha>`, uncommitted, in
-      the main tree. It refuses when the branch head is no longer that SHA
+      the main tree (it runs the scope check itself too). It refuses when the branch head is no longer that SHA
       (the branch moved after the report): the unit is not done as
       reported; read its final report again, or send it back. A conflict
       aborts cleanly and sends the unit back.
@@ -135,6 +138,8 @@ so there is no default-branch catch-up; Codex facts are in
 
 ## Pickup (a new session, unattended)
 
-For each `dispatched` unit: its branch has commits past `base` → handle as a
-completion (step 3); no branch or no commits → dispatch again; a worktree
+For each `dispatched` unit: its branch has commits past `base` but no final
+report → not delivered: read the worker's transcript for its report; none,
+then send it back (step 3.5) with the branch's commits as its starting
+point; no branch or no commits → dispatch again; a worktree
 with uncommitted changes → keep it, list the files, never delete.

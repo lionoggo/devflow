@@ -26,7 +26,8 @@ dflow 线 <slug>/<id>/<attempt>
 范围     只能改：<globs>；不能改：<受保护路径和其他单元的路径>；当前目录就是你的 worktree，只在这里提交；
          worktree 之外只写回执那两个路径（多线）
 上下文   <相关文件>；<依赖单元的报告原文>（你看不到其他单元）
-验收     <能判对错的条件，每行一条>
+验收     <能判对错的条件，每行一条，带清单里的验收编号>；
+         反例：<测试全绿、用户仍会说“没做完”的一种结果>；必须走的真实路径：<…>
 验证     <只跑仓库里已跟踪的检查命令>；跑不了的写明原因，不要假装跑过
          （只有一条命令就能判对错时，这一栏整行写成：验证     单命令验证：<命令>；
          只有这样单独一行才授权自报，别处提到不算）
@@ -36,9 +37,11 @@ dflow 线 <slug>/<id>/<attempt>
          决策行：本单元里的分叉、换思路、放弃的做法，每行六列
          （ts phase decision why evidence result），证据指向提交或 path:line
 常驻     <.dflow/<slug>/standing.md 原文，整段粘贴>
-资源     （只在要用共享资源时写）锁名 <资源>；用一条命令完成取锁、使用、释放：
+资源     （只在要用共享资源时写）锁名 <资源>；能用一条命令做完时，在这条命令里取锁、使用、释放：
          export DFLOW_LOCK_DIR=<锁目录绝对路径>; L=<lines.sh 的绝对路径>; tok=$($L lock acquire <资源> <slug>/<id>/<attempt> $$) || exit 1; <用这项资源的命令>; rc=$?; $L lock release <资源> "$tok"; exit $rc
          拿不到锁就不做这一步，在回执里写明；用完的程序在这条命令里关掉
+         （跨多次工具调用的使用，如经 MCP 驱动 Godot 或浏览器，只发给 headless 线：第一次调用前
+         用 $DFLOW_HOLDER_PID 代替 $$ 取锁，关掉程序后凭令牌释放，令牌写进回执）
 回执     先把完整报告写到 <主仓库绝对路径>/.dflow/<slug>/reports/<id>-<attempt>.md.tmp，
          再 mv 到 <主仓库绝对路径>/.dflow/<slug>/reports/<id>-<attempt>.md；第一行固定为
          RECEIPT <id> <attempt> <done|partial|blocked> <提交号|只读产物路径>

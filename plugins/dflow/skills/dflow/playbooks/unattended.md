@@ -84,7 +84,11 @@ On "开始":
    conditions with expected results and the progress rule, units, open
    questions with defaults. A check script the frame adds (an anti-shortcut
    smoke test) lives beside it as `.dflow/<slug>-<name>`; it is protected. Never edit it afterwards unless the user says so;
-   then re-claim and log a `correction` row.
+   then log a `correction` row with the new SHA-256 of each changed check
+   script (it replaces the `start` row's hash from then on), and when the
+   manifest changed too, `run-state.sh refresh <slug> <the lease's old
+   manifest sha256>` (a plain re-claim keeps the old hash and the next
+   check fails).
 4. `$S/scripts/run-state.sh claim <slug>`, then `run-state.sh caffeinate <slug>`.
 5. Log `start` (`$S/scripts/log.sh .dflow/<slug>.tsv start …`): evidence holds
    the base SHA, a hash of `git ls-remote` (or the local remote's
@@ -203,8 +207,11 @@ pause only after that.
 1. `run-state.sh claim <slug>`. Refused because another agent process
    (claude or codex) is alive: tell the user to close that session first; stop.
 2. `run-state.sh check <slug>` and handle it as in **Round** step 1.
-3. Read the manifest; rerun every condition yourself, never trusting a logged
-   pass.
+3. Read the manifest. Inherit a logged pass only when it was at the current
+   HEAD and nothing it depends on changed since (manifest, check scripts,
+   environment) and its evidence is on disk; rerun every other condition
+   yourself, and say which passes you inherited. Never redo a costly check
+   just because the session changed; Close reruns everything anyway.
 4. Log `start` naming the inherited ts range and your full session id. Keep
    the manifest's deadline.
 5. A run that paused on a `wip:` commit: verify it or revert it first. A
@@ -247,7 +254,8 @@ is released only at step 10.
    Append `correction` rows for mismatches.
 5. Detection, instead of a guard: `run-state.sh scope <slug>` (protected or
    outside-scope files changed); each `.dflow/<slug>-<name>` check script
-   against its SHA-256 in the first `start` row; `timeline.py --danger <ids>`
+   against its SHA-256 in the first `start` row, or in the last
+   `correction` row that changed it; `timeline.py --danger <ids>`
    (forbidden git commands, whole multi-line commands scanned; exit 1 when
    any); remote refs
    against the `start` hash, reported as "未观察到变化" or "有变化" (this
@@ -282,7 +290,9 @@ is released only at step 10.
    Unavailable: the range `<review head>..HEAD` is 未审查.
 9. Log `close`; the decision column is exactly 完成, 部分完成, or 受阻,
    judged by the conditions, not by a clean review.
-10. Stop the loop (Codex: `update_goal` `complete`, or `blocked` when 受阻),
+10. Stop the loop (Codex: `update_goal` `complete`, or `blocked` when 受阻;
+   `complete` ends the goal's objective, running rounds until Close, not
+   the product goal: a 部分完成 stays 部分完成 in the row and the reply),
    `run-state.sh release <slug>` (stops this run's caffeinate only), notify.
 
 **Reply:**

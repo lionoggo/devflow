@@ -34,8 +34,9 @@ verification method | evidence | result
 
 - Before each repair: the user goal is unchanged, the criterion still holds,
   and the failure is reproducible or well evidenced.
-- The verifier is the only writer during repair; any helper subagents stay
-  read-only. When delegating investigation, pass raw failure evidence, not a
+- Repair happens only where `playbooks/verify.md` step 7 grants it; then
+  the session that built the candidate is the only writer. An independent
+  verifier and any helper subagents stay read-only. When delegating investigation, pass raw failure evidence, not a
   repair guess.
 - Count rounds only for the same product defect under stable criteria;
   harness fixes, environment retries, and goal changes do not count.
