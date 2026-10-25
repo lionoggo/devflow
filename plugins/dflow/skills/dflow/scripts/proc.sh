@@ -39,9 +39,13 @@
 #   proc_stop <out>              stop the run's process group after the identity check and confirm it
 #                                is gone: return 0 "ok stopped" / "ok not running", or 1
 #                                "not stopped: <reason>" (nothing is signalled when the check fails).
+#                                Success only once the process group is provably empty (kill -0 on it
+#                                says "No such process"); a group that cannot be checked (e.g. not
+#                                permitted) is "not stopped: cannot check the process group <pgid>".
 #                                Leader gone: "not stopped" while its group has a member or cannot be
-#                                checked; once the group is provably empty "ok not running", and
-#                                <out>.timeout is removed
+#                                checked; once the group is provably empty "ok not running". A confirmed
+#                                stop keeps <out>.timeout (a line "stopped" is appended), so wait and
+#                                peek still say "ended timeout, stopped late"
 # <out>.pid: line 1 "<pid> <started>", then "lstart: <ps lstart>" and "command: <ps command>" of the
 # wrapper (`python3 -I - <out> ...`), read right after the fork. Identity: the pid leads its own
 # process group and its lstart and command equal the recorded ones exactly. The identity is unknown
@@ -86,7 +90,6 @@ _proc_id() { # 0 the recorded pid is this run, 1 it is gone or provably another 
     kill -0 "$_pp" 2>/dev/null && return 2   # ps could not answer for a live pid
     return 1
 }
-_proc_group() { kill -0 -- -"$_pp" 2>/dev/null; }  # any process of the group left
 _proc_gstate() { # 0 the recorded group still has a member, 1 it is provably empty, 2 cannot tell
     local e
     [ -n "$_pp" ] || return 2
@@ -103,11 +106,16 @@ _proc_late() { # <out>, its leader gone: with <out>.timeout (a stop that was not
     *) echo "running (timeout, not stopped)"; return 3 ;;
     esac
 }
-_proc_kill() { # TERM the group, then KILL; return 0 when the group is gone
+_proc_kill() { # TERM the group, then KILL; return as _proc_gstate after it: 1 the group is provably
+    # empty (stopped), 0 a member is still there, 2 it cannot be checked (never taken as stopped)
+    local g
     kill -TERM -- -"$_pp" 2>/dev/null
-    for _ in 1 2 3 4 5; do _proc_group || break; sleep 1; done
-    _proc_group && { kill -KILL -- -"$_pp" 2>/dev/null; sleep 1; }
-    ! _proc_group
+    for _ in 1 2 3 4 5; do _proc_gstate; g=$?; [ $g = 0 ] || break; sleep 1; done
+    if [ $g != 1 ]; then kill -KILL -- -"$_pp" 2>/dev/null; sleep 1; fi
+    _proc_gstate
+}
+_proc_stopped() { # <out>: a confirmed stop keeps <out>.timeout (the run's end stays "timeout, stopped late") and notes it
+    [ ! -f "$1.timeout" ] || grep -qx stopped "$1.timeout" 2>/dev/null || echo stopped >> "$1.timeout"
 }
 
 proc_start() {
@@ -235,7 +243,11 @@ proc_wait() {
     [ ! -f "$out.timeout" ] || { echo "running (timeout, not stopped)"; return 3; }
     if [ $(( $(date +%s) - _ps )) -ge "$limit" ]; then
         [ $id = 0 ] || { echo "ended timeout, not stopped: cannot check that $_pp is this run"; return 1; }
-        if _proc_kill; then echo "ended timeout"; else echo "ended timeout, still running $_pp"; fi
+        _proc_kill; case $? in
+        1) echo "ended timeout" ;;
+        0) echo "ended timeout, still running $_pp" ;;
+        *) echo "ended timeout, not stopped: cannot check the process group $_pp" ;;
+        esac
         return 1
     fi
     [ $id = 0 ] && echo "running" || echo "running (identity unverified)"; return 3
@@ -258,12 +270,15 @@ proc_stop() {
         0) echo "not stopped: leader $_pp is gone but its process group still runs"; return 1 ;;
         2) echo "not stopped: leader $_pp is gone and its process group cannot be checked"; return 1 ;;
         esac
-        rm -f "$out.timeout"   # the group is provably empty: a timeout stop left unconfirmed is over now
+        _proc_stopped "$out"   # the group is provably empty: a timeout stop left unconfirmed is over now
         echo "ok not running"; return 0
     fi
     _proc_id; id=$?
     [ $id != 2 ] || { echo "not stopped: cannot check that $_pp is this run (identity unverified)"; return 1; }
     [ $id = 0 ] || { echo "not stopped: pid $_pp is not this run (identity check failed)"; return 1; }
-    if _proc_kill; then echo "ok stopped"; return 0; fi
-    echo "not stopped: still running $_pp"; return 1
+    _proc_kill; case $? in
+    1) _proc_stopped "$out"; echo "ok stopped"; return 0 ;;
+    0) echo "not stopped: still running $_pp"; return 1 ;;
+    esac
+    echo "not stopped: cannot check the process group $_pp"; return 1
 }

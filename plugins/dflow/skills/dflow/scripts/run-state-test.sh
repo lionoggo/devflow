@@ -119,48 +119,23 @@ for i in 1 2; do (PATH="$t/slowsha:$PATH" "$rs" refresh demo "$oh" > "$t/rr$i" 2
 [ "$(grep -c won "$t/rr")" = 1 ] && grep -qx "manifest_sha256: $nh" .dflow/demo.lock/lease && ok || bad "concurrent refreshes: $(grep -c won "$t/rr") won: $(cat "$t/rr1" "$t/rr2")"
 [ -z "$(ls -d .dflow/demo.lock.* 2>/dev/null)" ] && ok || bad "refresh left $(ls -d .dflow/demo.lock.*)"
 cp "$t/m6" .dflow/demo.md; expect 0 "refresh back after the race" "$rs" refresh demo "$nh"
-# T5: a live lease transaction makes refresh wait, then refuse; one left over 10s ago is taken over
+# V3: the lease transaction is an flock on .dflow/.txn/demo.lock. While a live process holds it, refresh
+# waits DFLOW_LEASE_TXN_WAIT seconds and is refused with the lease unchanged; once that holder is killed
+# the kernel has dropped the lock, and the next refresh gets it at once
 oh=$(sed -n 's/^manifest_sha256: //p' .dflow/demo.lock/lease); cp .dflow/demo.md "$t/m7"; echo "approved: txn" >> .dflow/demo.md
-mkdir .dflow/demo.lock.txn; cp .dflow/demo.lock/lease "$t/lease7"
-out=$(DFLOW_LEASE_TXN_WAIT=1 "$rs" refresh demo "$oh" 2>&1); rc=$?
-[ $rc = 1 ] && cmp -s .dflow/demo.lock/lease "$t/lease7" && [ -d .dflow/demo.lock.txn ] && ok || bad "refresh during another lease transaction: $rc $out"
-touch -t 200001010000 .dflow/demo.lock.txn
-out=$("$rs" refresh demo "$oh" 2>&1); rc=$?
-[ $rc = 0 ] && [ ! -e .dflow/demo.lock.txn ] && ok || bad "refresh over a lease transaction left 10s ago: $rc $out"
+mkdir -p .dflow/.txn; rm -f "$t/held"
+python3 -I -c 'import fcntl, sys, time
+f = open(sys.argv[1], "a"); fcntl.flock(f, fcntl.LOCK_EX); open(sys.argv[2], "w").close(); time.sleep(60)' .dflow/.txn/demo.lock "$t/held" & hp=$!; pids+=("$hp")
+for i in $(seq 1 50); do [ -f "$t/held" ] && break; sleep 0.1; done
+cp .dflow/demo.lock/lease "$t/lease7"; s0=$(date +%s)
+out=$(DFLOW_LEASE_TXN_WAIT=2 "$rs" refresh demo "$oh" 2>&1); rc=$?; el=$(( $(date +%s) - s0 ))
+[ $rc = 1 ] && [ $el -ge 1 ] && cmp -s .dflow/demo.lock/lease "$t/lease7" && echo "$out" | grep -q "in progress" && ok || bad "refresh while a live process holds the lease transaction: $rc after ${el}s: $out"
+kill -9 "$hp" 2>/dev/null; wait "$hp" 2>/dev/null
+s0=$(date +%s); out=$(DFLOW_LEASE_TXN_WAIT=2 "$rs" refresh demo "$oh" 2>&1); rc=$?; el=$(( $(date +%s) - s0 ))
+[ $rc = 0 ] && [ $el -lt 2 ] && ok || bad "refresh once the holder of the lease transaction was killed: $rc after ${el}s: $out"
 nh=$(shasum -a 256 .dflow/demo.md | cut -d' ' -f1); cp "$t/m7" .dflow/demo.md; expect 0 "refresh back after the txn test" "$rs" refresh demo "$nh"
-# U3: the lease transaction records its holder (pid and a token in .lock.txn/owner). A holder that is still
-# alive is never taken over, however old the directory; once it is gone the next one takes over at once;
-# with no holder to check (no owner file) only one older than 60s is taken; and a holder leaving removes
-# only its own transaction, never one that has replaced it
-oh=$(sed -n 's/^manifest_sha256: //p' .dflow/demo.lock/lease); cp .dflow/demo.md "$t/m8"; echo "approved: owner" >> .dflow/demo.md
-sleep 60 & hp=$!; pids+=("$hp")
-mkdir .dflow/demo.lock.txn; printf 'pid: %s\ntoken: theirs\n' "$hp" > .dflow/demo.lock.txn/owner; touch -t 200001010000 .dflow/demo.lock.txn
-cp .dflow/demo.lock/lease "$t/lease8"
-out=$(DFLOW_LEASE_TXN_WAIT=1 "$rs" refresh demo "$oh" 2>&1); rc=$?
-[ $rc = 1 ] && cmp -s .dflow/demo.lock/lease "$t/lease8" && grep -qx "token: theirs" .dflow/demo.lock.txn/owner 2>/dev/null && ok || bad "refresh over a live holder's old transaction: $rc $out"
-kill "$hp" 2>/dev/null; wait "$hp" 2>/dev/null; touch .dflow/demo.lock.txn
-out=$(DFLOW_LEASE_TXN_WAIT=1 "$rs" refresh demo "$oh" 2>&1); rc=$?
-[ $rc = 0 ] && [ ! -e .dflow/demo.lock.txn ] && ok || bad "refresh after the holder exited: $rc $out"
-nh=$(shasum -a 256 .dflow/demo.md | cut -d' ' -f1); cp "$t/m8" .dflow/demo.md; expect 0 "refresh back after the owner test" "$rs" refresh demo "$nh"
-oh=$nh; oh=$(sed -n 's/^manifest_sha256: //p' .dflow/demo.lock/lease); cp .dflow/demo.md "$t/m9"; echo "approved: noowner" >> .dflow/demo.md
-mkdir .dflow/demo.lock.txn; python3 -I -c 'import os, sys, time; t = time.time() - 30; os.utime(sys.argv[1], (t, t))' .dflow/demo.lock.txn
-out=$(DFLOW_LEASE_TXN_WAIT=1 "$rs" refresh demo "$oh" 2>&1); rc=$?
-[ $rc = 1 ] && [ -d .dflow/demo.lock.txn ] && ok || bad "refresh over a 30s-old transaction with no holder recorded: $rc $out"
-python3 -I -c 'import os, sys, time; t = time.time() - 61; os.utime(sys.argv[1], (t, t))' .dflow/demo.lock.txn
-out=$(DFLOW_LEASE_TXN_WAIT=1 "$rs" refresh demo "$oh" 2>&1); rc=$?
-[ $rc = 0 ] && [ ! -e .dflow/demo.lock.txn ] && ok || bad "refresh over a 61s-old transaction with no holder recorded: $rc $out"
-nh=$(shasum -a 256 .dflow/demo.md | cut -d' ' -f1); cp "$t/m9" .dflow/demo.md; expect 0 "refresh back after the no-owner test" "$rs" refresh demo "$nh"
-mkdir -p "$t/holdsha"; printf '#!/bin/sh\ntouch %s/insha; sleep 3\nexec %s "$@"\n' "$t" "$(command -v shasum)" > "$t/holdsha/shasum"; chmod +x "$t/holdsha/shasum"
-oh=$(sed -n 's/^manifest_sha256: //p' .dflow/demo.lock/lease); cp .dflow/demo.md "$t/m10"; echo "approved: leave" >> .dflow/demo.md
-rm -f "$t/insha"; (PATH="$t/holdsha:$PATH" "$rs" refresh demo "$oh" > "$t/rr10" 2>&1) & ap=$!
-for i in $(seq 1 50); do [ -f "$t/insha" ] && break; sleep 0.1; done
-[ -f .dflow/demo.lock.txn/owner ] && ok || bad "a refresh in progress records no holder in .lock.txn/owner"
-# another took it over meanwhile (here: one that has not written its owner file yet, an empty directory)
-mv .dflow/demo.lock.txn "$t/oldtxn"; mkdir .dflow/demo.lock.txn
-wait "$ap"
-[ -d .dflow/demo.lock.txn ] && ok || bad "the old holder removed the transaction that replaced it: $(cat "$t/rr10")"
-rm -rf .dflow/demo.lock.txn "$t/oldtxn"
-nh=$(shasum -a 256 .dflow/demo.md | cut -d' ' -f1); cp "$t/m10" .dflow/demo.md; expect 0 "refresh back after the leave test" "$rs" refresh demo "$nh"
+# V3: no transaction directory or owner record is left behind
+[ ! -e .dflow/demo.lock.txn ] && [ -z "$(ls -d .dflow/demo.lock.* 2>/dev/null)" ] && ok || bad "lease transaction left $(ls -d .dflow/demo.lock.* 2>/dev/null)"
 
 # dirty tree of unknown origin
 echo x > src/new.py; expect 1 "dirty tree" "$rs" check demo; rm src/new.py

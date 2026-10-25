@@ -34,21 +34,25 @@
 #                         compared); a refusal lists each missing item.
 #                         Refused while .dflow/<slug>.landing is pending at the current HEAD.
 #                         A land writes .dflow/<slug>.landing: "uid", "head" (HEAD at the land), "source" rows,
-#                         then one row per changed file: status (A added, M modified, D deleted), path, and the
-#                         file's blob after the land (git hash-object; "-" for D). Then it records the source
+#                         then one row per changed file: status (A added, M modified, T type changed, D deleted),
+#                         path, and the file's index entry right after the land, "<mode> <blob>" as
+#                         `git ls-files -s` gives it (so a symlink is its link text, an executable 100755; "-" for D).
+#                         Then it records the source
 #                         commit in .dflow/<slug>.landed (id, sha; last row wins). If the marker cannot be
 #                         written: exit 1, "FAIL landed <id> into the working tree but could not record
 #                         <marker>; undo by hand: <files>", and no .landed row
 #   landed   <slug> <id>  close the land of <id> once it is committed: removes .landing only when it is this
 #                         unit's, HEAD is no longer the one it records, and every listed file is in HEAD as it
-#                         landed (A/M: HEAD:<path> is the recorded blob; D: not in HEAD) with no change of it
+#                         landed (A/M/T: `git ls-tree HEAD` gives the recorded mode and blob; D: not in HEAD) with no change of it
 #                         left in the index or working tree; else refused, the paths that differ listed, the
 #                         record kept
 #   unland   <slug> <id>  undo an uncommitted land: only with a .landing of this unit at the current HEAD
-#                         and every listed file still as the land left it (A/M: the recorded blob; D: absent)
-#                         or already as HEAD has it (nothing to undo), in the working tree and in the index
-#                         alike; else refused, nothing touched, the files that differ listed (the index ones
-#                         marked 暂存区不符). Restores its M/D files
+#                         and every listed file still as the land left it (A/M/T: the recorded mode and blob;
+#                         D: absent) or already as HEAD has it (nothing to undo), in the working tree and in the
+#                         index alike. Index: mode and blob both equal. Working tree: the blob (git hash-object;
+#                         a symlink: its link text) and the type and executable bit the mode says (the bit only
+#                         when core.fileMode is on). Else refused, nothing touched, the files that differ listed
+#                         (the index ones marked 暂存区不符). Restores its M/T/D files
 #                         from HEAD, deletes its A files, removes the record. Other changes left are listed
 #                         (exit 1), never touched
 #   cleanup  <slug> [--ignored-ok]
@@ -124,12 +128,34 @@ manifest_check() { # changed files base..tip against the manifest's allow and pr
     return $bad
 }
 mval() { awk -F'\t' -v k="$1" '$1 == k { print $2; exit }' "$marker" 2>/dev/null; }
-idxblob() { # idxblob <path>: its stage-0 blob in the index, "-" when not there, "?" when unmerged or unreadable
+# Entries are "<mode> <blob>" as git records them, "-" when absent, "?" when they cannot be read
+idxent() { # idxent <path>: its stage-0 entry in the index; "?" when unmerged or unreadable
     local l n
-    l=$(git ls-files -s -- ":(literal)$1" 2>/dev/null) || { echo "?"; return; }
+    l=$(git ls-files -s -z -- ":(literal)$1" 2>/dev/null | tr '\0' '\n') || { echo "?"; return; }
     [ -n "$l" ] || { echo -; return; }
     n=$(printf '%s\n' "$l" | wc -l | tr -d ' ')
-    case $n:$l in 1:*" 0	$1") l=${l#* }; echo "${l%% *}" ;; *) echo "?" ;; esac
+    case $n:$l in 1:*" 0	$1") l=${l%%	*}; echo "${l% 0}" ;; *) echo "?" ;; esac
+}
+headent() { # headent <path>: its entry in HEAD
+    local l
+    l=$(git ls-tree -z --full-tree HEAD -- "$1" 2>/dev/null | tr '\0' '\n') || { echo "?"; return; }
+    [ -n "$l" ] || { echo -; return; }
+    case $l in *"	$1") l=${l%%	*}; set -- $l; [ $# = 3 ] && echo "$1 $3" || echo "?" ;; *) echo "?" ;; esac
+}
+wtis() { # wtis <path> <entry>: 0 when the working tree holds <entry> there (type, executable bit, blob)
+    local f=$1 m b
+    [ "$2" != "?" ] || return 1
+    if [ "$2" = - ]; then [ ! -e "$f" ] && [ ! -L "$f" ]; return; fi
+    m=${2%% *}; b=${2#* }
+    case $m in
+    120000) [ -L "$f" ] && [ "$(printf '%s' "$(readlink -- "$f")" | git hash-object --stdin 2>/dev/null)" = "$b" ] ;;
+    100644|100755)
+        [ -f "$f" ] && [ ! -L "$f" ] && [ "$(git hash-object -- "$f" 2>/dev/null)" = "$b" ] || return 1
+        [ "$(git config --bool core.fileMode 2>/dev/null)" != false ] || return 0
+        if [ "$m" = 100755 ]; then [ -x "$f" ]; else [ ! -x "$f" ]; fi ;;
+    160000) [ -d "$f" ] && [ ! -L "$f" ] && [ "$(git -C "$f" rev-parse -q --verify HEAD 2>/dev/null)" = "$b" ] ;;
+    *) return 1 ;;
+    esac
 }
 
 case $cmd in
@@ -223,10 +249,11 @@ land)
     d=$(dirty); [ -z "$d" ] || { echo "FAIL working tree not clean; refusing to land:"; echo "$d"; exit 1; }
     if err=$(git cherry-pick -n "$base..$tip" 2>&1 >/dev/null); then
         src=$(git rev-parse "$tip^{commit}")
-        # each A/M file with the blob it has right after the land (unland undoes only that content); D "-"
+        # each A/M/T file with its index entry right after the land, "<mode> <blob>" (unland undoes only
+        # that); D "-"
         { printf 'uid\t%s\nhead\t%s\nsource\t%s\n' "$uid" "$now" "$src"
           git diff --cached --no-renames --name-status | while IFS=$'\t' read -r st f; do
-              if [ "$st" = D ]; then h=-; else h=$(git hash-object -- "$f") || exit 1; fi
+              if [ "$st" = D ]; then h=-; else h=$(idxent "$f"); case $h in -|"?") exit 1 ;; esac; fi
               printf '%s\t%s\t%s\n' "$st" "$f" "$h"
           done; } 2>/dev/null > "$marker.tmp.$$" && [ ! -d "$marker" ] && mv -f "$marker.tmp.$$" "$marker" 2>/dev/null || {
             rm -f "$marker.tmp.$$" 2>/dev/null
@@ -271,13 +298,14 @@ unland)
     changed=""
     while IFS=$'\t' read -r st f h; do
         [ -n "$f" ] || continue
-        cur=-; { [ -e "$f" ] || [ -L "$f" ]; } && cur=$(git hash-object -- "$f" 2>/dev/null || echo "?")
-        was=$(git rev-parse -q --verify "HEAD:$f" 2>/dev/null || echo -)
-        # the index too: the landed blob, or already back as HEAD has it (D: absent, or HEAD's)
-        idx=$(idxblob "$f")
-        if [ -z "$h" ] || { [ "$idx" != "$h" ] && [ "$idx" != "$was" ]; }; then changed="$changed
+        case $st:$h in D:-|[AMT]:1[0-9][0-9][0-9][0-9][0-9]" "[0-9a-f]*) ;; *) h="" ;; esac   # an unreadable record matches nothing
+        was=$(headent "$f")
+        # the index: the landed entry, or already back as HEAD has it (D: absent, or HEAD's); mode and blob both
+        idx=$(idxent "$f")
+        if [ -z "$h" ] || [ "$was" = "?" ] || { [ "$idx" != "$h" ] && [ "$idx" != "$was" ]; }; then changed="$changed
   $f (暂存区不符: the index holds $idx, not the landed ${h:-?} nor HEAD's $was)"; fi
-        [ -n "$h" ] && { [ "$cur" = "$h" ] || [ "$cur" = "$was" ]; } && continue
+        [ -n "$h" ] && { wtis "$f" "$h" || wtis "$f" "$was"; } && continue
+        cur=-; { [ -e "$f" ] || [ -L "$f" ]; } && cur=present
         case $st:$cur in
         D:-) ;;
         D:*) changed="$changed
@@ -285,7 +313,7 @@ unland)
         *:-) changed="$changed
   $f (gone since the land)" ;;
         *) changed="$changed
-  $f (changed since the land${h:+; landed blob $h})" ;;
+  $f (changed since the land: content, type or executable bit${h:+; landed $h})" ;;
         esac
     done <<< "$files"
     [ -z "$changed" ] || { echo "FAIL not undoing the land of $uid: these files no longer hold what it landed (nothing touched):$changed"; exit 1; }
@@ -309,7 +337,7 @@ landed)
     miss=""
     while IFS=$'\t' read -r st f h; do
         [ -n "$f" ] || continue
-        hb=$(git rev-parse -q --verify "HEAD:$f" 2>/dev/null || echo -)
+        hb=$(headent "$f")
         if [ "$st" = D ]; then [ "$hb" = - ] || miss="$miss
   $f (deleted by the land, still in HEAD)"
         elif [ -z "$h" ] || [ "$hb" != "$h" ]; then miss="$miss

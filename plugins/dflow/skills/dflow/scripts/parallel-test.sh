@@ -207,7 +207,7 @@ git rm -q --cached staged.txt; rm -f staged.txt notes.txt; git checkout -q READM
 # a normal land, then unland: the marker names the unit, HEAD and the files; unland restores a clean tree
 out=$("$ps" land ld x); rc=$?
 mk=.dflow/ld.landing
-[ $rc = 0 ] && grep -qx "$(printf 'uid\tx')" "$mk" && grep -qx "$(printf 'head\t%s' "$h0")" "$mk" && grep -qx "$(printf 'A\tapp/ldx.py\t%s' "$(git hash-object app/ldx.py)")" "$mk" && grep -qx "$(printf 'M\tapp/core.py\t%s' "$(git hash-object app/core.py)")" "$mk" && ok || bad "land marker: $rc $out; $(cat "$mk" 2>/dev/null)"
+[ $rc = 0 ] && grep -qx "$(printf 'uid\tx')" "$mk" && grep -qx "$(printf 'head\t%s' "$h0")" "$mk" && grep -qx "$(printf 'A\tapp/ldx.py\t100644 %s' "$(git hash-object app/ldx.py)")" "$mk" && grep -qx "$(printf 'M\tapp/core.py\t100644 %s' "$(git hash-object app/core.py)")" "$mk" && ok || bad "land marker: $rc $out; $(cat "$mk" 2>/dev/null)"
 # unland of another unit, or a second land while this one is pending, is refused and touches nothing
 out=$("$ps" unland ld y); [ $? = 1 ] && echo "$out" | grep -q "unit x" && [ -f app/ldx.py ] && [ -f "$mk" ] && ok || bad "unland of another unit: $out"
 out=$("$ps" unland ld x); rc=$?
@@ -248,6 +248,28 @@ git add app/core.py; expect 0 "unland once the index is back at the landed conte
 # U1: a file already restored in the index as HEAD has it is fine (nothing to undo there)
 "$ps" land ld x >/dev/null; git restore --staged app/core.py
 expect 0 "unland with the index already back at HEAD" "$ps" unland ld x
+# V1: the record is the index entry, mode and blob: a change of the executable bit staged only
+# (100644 -> 100755, same blob, working tree as landed) is refused, and the staged mode stays
+"$ps" land ld x >/dev/null; git update-index --chmod=+x app/core.py
+out=$("$ps" unland ld x); rc=$?
+[ $rc = 1 ] && echo "$out" | grep -q "app/core.py.*暂存区不符" && git ls-files -s app/core.py | grep -q '^100755 ' && [ -f app/ldx.py ] && [ -f "$mk" ] && ok || bad "unland over a staged-only mode change: $rc $out"
+git update-index --chmod=-x app/core.py; expect 0 "unland once the index mode is back" "$ps" unland ld x
+# V1: in the working tree too: the executable bit set after the land is refused
+"$ps" land ld x >/dev/null; chmod +x app/core.py
+out=$("$ps" unland ld x); rc=$?
+[ $rc = 1 ] && echo "$out" | grep -q "app/core.py (changed since the land" && [ -x app/core.py ] && [ -f "$mk" ] && ok || bad "unland over a working-tree mode change: $rc $out"
+chmod -x app/core.py; expect 0 "unland once the working-tree mode is back" "$ps" unland ld x
+# V1: a symlink added by a unit is recorded as git stores it (120000, the blob of its link text):
+# land then unland goes through; land, commit, then landed closes it
+git worktree add -q -b ld-l "$t/ldl" "$h0"; ( cd "$t/ldl"; ln -s core.py app/lnk; git add -A; git commit -qm ldl )
+printf 'l\t-\tapp/lnk\tdispatched\t%s\t-\tld-l\t-\t0\t-\n' "$h0" >> .dflow/ld.units.tsv
+out=$("$ps" land ld l); rc=$?
+[ $rc = 0 ] && [ -L app/lnk ] && grep -qx "$(printf 'A\tapp/lnk\t120000 %s' "$(printf core.py | git hash-object --stdin)")" "$mk" && ok || bad "land of a symlink: $rc $out; $(cat "$mk" 2>/dev/null)"
+out=$("$ps" unland ld l); rc=$?
+[ $rc = 0 ] && [ ! -e app/lnk ] && [ ! -L app/lnk ] && [ ! -e "$mk" ] && [ -z "$(git status --porcelain --untracked-files=all | grep -v ' \.dflow/' | grep -v ' \.claude/worktrees/')" ] && ok || bad "unland of a symlink: $rc $out"
+"$ps" land ld l >/dev/null; git commit -qm "land l"
+out=$("$ps" landed ld l); [ $? = 0 ] && [ ! -e "$mk" ] && ok || bad "landed of a committed symlink: $out"
+git reset -q --hard "$h0"; rm -f "$mk"
 # U4: landed needs the land's content in the commit: an empty commit, or one of an unrelated file only,
 # is refused with the paths named and the marker kept; the real commit of the land closes it
 "$ps" land ld x >/dev/null; git update-ref HEAD "$(git commit-tree "HEAD^{tree}" -p HEAD -m empty)"   # an empty commit; the land stays staged

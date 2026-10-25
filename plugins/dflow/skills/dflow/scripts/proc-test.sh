@@ -119,6 +119,10 @@ out=$(proc_peek "$t/lim5"); [ $? = 3 ] && [ "$out" = "running (timeout, not stop
 out=$(proc_wait "$t/lim5" 1); [ $? = 3 ] && [ "$out" = "running (timeout, not stopped)" ] && ok || bad "wait on an unconfirmed stop: $out"
 out=$(proc_start "$t/lim5" sh -c 'echo again' < /dev/null 2>&1); [ $? = 1 ] && ok || bad "start over an unconfirmed stop: $out"
 out=$(proc_stop "$t/lim5"); [ "$out" = "ok stopped" ] && ! kill -0 -- -"$pid" 2>/dev/null && ok || bad "stop after an unconfirmed stop: $out"
+# V2: a confirmed stop keeps <out>.timeout: wait and peek still say "ended timeout, stopped late"
+[ -f "$t/lim5.timeout" ] && grep -qx stopped "$t/lim5.timeout" && ok || bad "stop removed or did not mark $t/lim5.timeout: $(cat "$t/lim5.timeout" 2>/dev/null)"
+out=$(proc_peek "$t/lim5"); [ $? = 1 ] && [ "$out" = "ended timeout, stopped late" ] && ok || bad "peek after a confirmed stop of a timed-out run: $out"
+out=$(proc_wait "$t/lim5" 1); [ $? = 1 ] && [ "$out" = "ended timeout, stopped late" ] && ok || bad "wait after a confirmed stop of a timed-out run: $out"
 # U2: <out>.timeout, no .exit, and the leader gone: while its process group still has a member (a group
 # whose leader exited and left a child), wait and peek say "running (timeout, not stopped)" (3) and
 # start is refused, keeping .pid and .timeout; once the group is empty, "ended timeout, stopped late"
@@ -145,9 +149,18 @@ kill -9 -- -"$lp" 2>/dev/null; gone "$lp" 10 || bad "test setup: group $lp not g
 out=$(proc_peek "$t/orph"); [ $? = 1 ] && [ "$out" = "ended timeout, stopped late" ] && ok || bad "peek: leader gone, group empty: $out"
 out=$(proc_wait "$t/orph" 1); [ $? = 1 ] && [ "$out" = "ended timeout, stopped late" ] && ok || bad "wait: leader gone, group empty: $out"
 cp "$t/orph.pid" "$t/orph2.pid"; cp "$t/orph.timeout" "$t/orph2.timeout"
-out=$(proc_stop "$t/orph2"); [ $? = 0 ] && [ ! -e "$t/orph2.timeout" ] && ok || bad "stop: leader gone, group empty: $out"
+out=$(proc_stop "$t/orph2"); [ $? = 0 ] && [ "$out" = "ok not running" ] && grep -qx stopped "$t/orph2.timeout" 2>/dev/null && ok || bad "stop: leader gone, group empty: $out"
+out=$(proc_peek "$t/orph2"); [ $? = 1 ] && [ "$out" = "ended timeout, stopped late" ] && ok || bad "peek after stop: leader gone, group empty: $out"
 pid=$(proc_start "$t/orph" sh -c 'echo again' < /dev/null); mine+=("$pid")
 out=$(proc_wait "$t/orph" 10); [ "$out" = "ended exit 0" ] && [ ! -e "$t/orph.timeout" ] && grep -qx again "$t/orph" && ok || bad "start once the group is empty: $out"
+# V2: the leader is alive and passes the identity check, but kill on its process group is refused
+# (EPERM, a stub of the builtin; no signal reaches the group): the group cannot be checked, so stop is
+# "not stopped: cannot check the process group", exit 1, and the run is still there
+pid=$(proc_start "$t/eperm" sleep 30 < /dev/null); mine+=("$pid"); sleep 0.3
+out=$( kill() { case "$*" in *" -- -"*) echo "kill: ($3) - Operation not permitted" >&2; return 1 ;; esac; builtin kill "$@"; }
+       proc_stop "$t/eperm" ); rc=$?
+[ $rc = 1 ] && [ "$out" = "not stopped: cannot check the process group $pid" ] && kill -0 "$pid" 2>/dev/null && ok || bad "stop with the group not checkable (EPERM): $rc $out"
+out=$(proc_stop "$t/eperm"); [ "$out" = "ok stopped" ] && ok || bad "stop once the group can be checked: $out"
 # without DFLOW_PROC_LIMIT: no deadline of its own, as before
 pid=$(proc_start "$t/nolim" sh -c 'sleep 4; exit 5' < /dev/null); mine+=("$pid")
 sleep 3; [ ! -f "$t/nolim.exit" ] && kill -0 "$pid" 2>/dev/null && ok || bad "a run without a limit ended early"
