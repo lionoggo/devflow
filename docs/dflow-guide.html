@@ -81,6 +81,7 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; white-space: nowrap
   <div class="sub">个人开发流程插件 · 试用版 2026-10-25</div>
   <div class="grp">开始</div>
   <a href="#what">它是什么</a>
+  <a href="#install">安装与更新</a>
   <a href="#start">怎么调用</a>
   <a href="#rules">它替你做什么、问什么</a>
   <div class="grp">能力</div>
@@ -116,6 +117,30 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; white-space: nowrap
   <div class="card"><b>真实证据</b><p>“完成”要附命令输出、截图或真实路径上的观察；没跑过的检查不会说跑过。</p></div>
   <div class="card"><b>对齐原目标</b><p>验收对照你最初的要求逐项核对，不拿“测试全绿”代替。</p></div>
 </div>
+
+<h2 id="install">安装与更新</h2>
+<p>源码在 GitHub：<code>git@github.com:lionoggo/devflow.git</code>（main 分支）。插件在仓库的 <code>plugins/dflow/</code>，仓库根目录自带两边的本地 marketplace，名字都是 <code>devflow</code>。</p>
+<h3>第一次安装</h3>
+<pre><code>git clone git@github.com:lionoggo/devflow.git ~/Workspaces/devflow
+
+# Claude Code
+claude plugin marketplace add ~/Workspaces/devflow
+claude plugin install dflow@devflow
+
+# Codex
+codex plugin marketplace add ~/Workspaces/devflow
+codex plugin add dflow@devflow</code></pre>
+<p>装好后开新会话，Claude Code 输入 <code>/dflow</code>，Codex 输入 <code>$dflow:dflow</code>，能看到入口就说明装好了。</p>
+<h3>更新到最新版</h3>
+<table>
+  <tr><th>宿主</th><th>怎么读插件</th><th>更新步骤</th></tr>
+  <tr><td>Claude Code</td><td>直接读仓库里的源码目录，不复制</td><td><code>git pull</code>，然后在会话里 <code>/reload-plugins</code>，或开新会话</td></tr>
+  <tr><td>Codex</td><td>安装时复制到 <code>~/.codex/plugins/cache/devflow/dflow/local/</code></td><td><code>git pull</code>，再执行 <code>codex plugin add dflow@devflow</code>，然后开新会话</td></tr>
+</table>
+<div class="note">不要在 <code>~/.claude/skills</code>、<code>~/.agents/skills</code>、<code>~/.codex/skills</code> 里再放同名技能的软链接：Claude Code 里它会遮住插件里的那一份，Codex 里同一技能会列出两份。<br>任何项目里有无人值守运行持有 <code>.dflow/&lt;slug&gt;.lock/</code> 时，先别改插件源码：Claude Code 是实时读源码的，改了会直接影响正在跑的任务。</div>
+<h3>卸载</h3>
+<pre><code>claude plugin uninstall dflow@devflow &amp;&amp; claude plugin marketplace remove devflow
+codex plugin remove dflow@devflow &amp;&amp; codex plugin marketplace remove devflow</code></pre>
 
 <h2 id="start">怎么调用</h2>
 <table>
@@ -368,6 +393,7 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; white-space: nowrap
 <p>看三样东西：验收矩阵是否逐项有证据；多线里每条线的验收账本是否在来源提交上有 pass；收尾是否在最终 HEAD 上重跑了全部条件。</p>
 
 <h2 id="naming">关于改名</h2>
+<div class="tip"><b>决定（2026-10-26）：保留 dflow 这个名字。</b>下面是当时的分析记录，留作试用结束后再议的参考。</div>
 <p>名字应该表达 dflow 的核心定位，而不是其中某个流程。Codex 给出的定位是：<b>用户定目标，插件选流程，在授权范围内主动推进，并用证据收尾的一种个人开发工作方式。</b>pstack 的 <code>poteto-mode</code> 靠作者名表达“这是一种工作方式”；换成通俗名字，名字本身就要承担这层解释。</p>
 <table>
   <tr><th>候选</th><th>中文叫法</th><th>调用</th><th>优点</th><th>风险</th></tr>
@@ -383,7 +409,7 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; white-space: nowrap
 </table>
 <p class="muted">以上候选都没有联网查重，正式使用前需要先查一遍。</p>
 <div class="tip"><b>如果要改，只改对外的名字</b>：插件名、主入口名、调用示例。内部协议全部保留：各仓库里的 <code>.dflow/</code> 账本、<code>dflow 线</code> 标记、<code>DFLOW_*</code> 环境变量、<code>refs/dflow/</code>、源码目录 <code>plugins/dflow/</code>，以及 marketplace 名 <code>devflow</code>。这样旧的运行记录照常能恢复，撤回也只需回退一次提交。旧调用 <code>/dflow</code> 不会自动保留，要想继续用，得单独做兼容入口并在两个宿主里分别验证。</div>
-<div class="note"><b>时机</b>：建议一周试用结束后再改。试用期间先在心里换着叫叫看，比如“用办法跑一下”“让它推进”，看哪个说起来自然；现在就改名，会让试用前后的数据没法比。</div>
+<div class="note"><b>如果以后要改</b>：等一周试用结束再动，否则试用前后的数据没法比。</div>
 
 <p class="muted" style="margin-top:60px">源码：<code>plugins/dflow/</code> · 入口说明：<code>plugins/dflow/skills/dflow/SKILL.md</code> · 本页：<code>docs/dflow-guide.html</code></p>
 </main>
