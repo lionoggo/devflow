@@ -45,13 +45,15 @@ deserves a look first, then the rows it points at. Read-only.** From pstack
    run after the last edit is a flag. One whose result may differ now (the
    environment changed since) is 未核实, with the command in `retro.md`;
    run it only when the user asks. A check or review counts only for the
-   commit it covered; a pass on an uncommitted tree, or a review before
-   later fixes, reported as covering the final commit is a flag.
+   commit or no-commit state id (`run-state.sh state`) it covered; a pass
+   bound to no commit or state id, or to an earlier one (a review before
+   later fixes), reported as covering the final state is a flag.
 5. Cross-model review as `references/decision-log.md` step 4 (from Codex,
    the call in `references/hosts.md`), even when the
    closeout already ran one: the code may have changed since, and this is
    the review the user reads. Reuse only a review this same conversation ran
-   on the same log and HEAD; one from another conversation is rerun, since
+   on the same log and state (HEAD, or the no-commit state id); one from
+   another conversation is rerun, since
    the tools or rules may have changed since, unless the user says to skip
    it. Give the reviewer the closeout's review files too, and ask which of
    their findings were fixed only in part. Unavailable: 未审查：<原因>.

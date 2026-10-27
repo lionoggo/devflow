@@ -20,7 +20,15 @@ pause. Anything else starts at **Frame**.
 One screen, then end your turn and wait for "开始". Before it, claim
 nothing, write no run file, start no loop or goal, and change no code, even
 in a session told never to stop: the frame is the run's one stop. Check
-every fact first; never ask what you can run.
+every fact first; never ask what you can run. The screen names the slug and
+how to review the run later (`/dflow:retro <slug>`).
+
+A request that cites a handoff or plan the user approved as this run's frame
+and 开始 (approving a plan alone is not that) does not wait: still show the
+screen, since it is the user's one look at the exact commands and baselines,
+mark each item as from that document or added by you, then go on to the 开始
+steps in the same turn. Stop and ask when an item you added changes scope,
+permissions, or acceptance; the 开始 step 1 stops still hold.
 
 1. **Done conditions**: each a command, its expected result, and its baseline
    output now. Ordered stages S1..Sn are fine; with an approved plan, take its
@@ -35,7 +43,11 @@ every fact first; never ask what you can run.
 2. **Units**: from the plan or the goal, riskiest first, with dependencies and
    which are independent.
 3. **Branch**: on a clean tree, `dflow/<slug>` from HEAD. A dirty tree: list
-   the files and stop; never clean or stash.
+   the files and stop; never clean or stash. Only when the user approved
+   keeping this dirty tree uncommitted does the run go on as a
+   **no-commit run**: manifest `commit: no`, `branch:` the current branch,
+   no branch created, no commits (**No-commit runs** below). Write no
+   project-local substitute for `run-state.sh check`.
 4. **Paths**: allowed to write (globs), and protected (every test, sample,
    and script the conditions use). A needed edit outside them is a gate.
    A protected test whose asserted facts the plan must change (a table
@@ -56,14 +68,14 @@ every fact first; never ask what you can run.
    never restarts it.
 8. **Environment**: the run branch `dflow/<slug>`, created at "开始" in this
    worktree (a branch, not a new worktree; the run never commits to the
-   branch it starts on); needs a mode that never stops for a permission prompt
+   branch it starts on; a no-commit run stays on the current branch); needs a mode that never stops for a permission prompt
    (`references/hosts.md`);
    `caffeinate` keeps the Mac awake; do not edit this repo by hand while it
    runs (say "暂停" first). First unattended run of this kind: suggest the
    user watch the first two rounds.
 9. **Parallel or in order**: run the throughput check in
    `references/parallel.md`. Show both plans with their estimated cost and
-   wall time; the default is in order. "开始，并行" picks parallel and
+   wall time; the default is in order (a no-commit run: in order only). "开始，并行" picks parallel and
    approves the worktrees `parallel.sh` creates and removes.
 10. **Start line**: check that the Skill tool can call `loop`. If it cannot,
    tell the user to reply with `/loop /dflow 继续无人值守 <slug>` instead of
@@ -74,7 +86,8 @@ every fact first; never ask what you can run.
 On "开始":
 1. Re-check HEAD, the tree, and each baseline output. Anything changed since
    the frame: stop and show what changed.
-2. Create the branch: `git switch -c dflow/<slug>` in this worktree. "开始"
+2. Create the branch: `git switch -c dflow/<slug>` in this worktree (a
+   no-commit run skips this). "开始"
    approves it; it is a branch, not a new worktree. Make sure the exclude file
    (`git rev-parse --git-path info/exclude`) has `.dflow/`; for a parallel
    run, `parallel.sh prepare <slug>` also adds `.claude/worktrees/`.
@@ -89,11 +102,13 @@ On "开始":
    manifest changed too, `run-state.sh refresh <slug> <the lease's old
    manifest sha256>` (a plain re-claim keeps the old hash and the next
    check fails).
-4. `$S/scripts/run-state.sh claim <slug>`, then `run-state.sh caffeinate <slug>`.
+4. A no-commit run first: `$S/scripts/run-state.sh baseline <slug>`. Then
+   `$S/scripts/run-state.sh claim <slug>` and `run-state.sh caffeinate <slug>`.
 5. Log `start` (`$S/scripts/log.sh .dflow/<slug>.tsv start …`): evidence holds
    the base SHA, a hash of `git ls-remote` (or the local remote's
    `show-ref`), the SHA-256 of each `.dflow/<slug>-<name>` check script (Git
-   does not see them), and the full session id.
+   does not see them) and of the baseline in a no-commit run, and the full
+   session id.
 6. Start the loop: Skill `loop` with args `/dflow 继续无人值守 <slug>`, no
    interval (dynamic). In Codex: `create_goal` with the objective
    `dflow 无人值守 <slug>：每次继续都是 <this file's absolute path> 的一个 Round，只经 Close 或 Pause 结束`
@@ -245,9 +260,11 @@ is released only at step 10.
 3. Timeline: `python3 -I $S/scripts/timeline.py --say <every session id in the
    log's start rows>` into a directory from `$S/scripts/scratch.sh close`. A missing
    transcript is listed as 未核实.
-4. Cross-check, reading the timeline as `references/decision-log.md` step 2
-   says: each progress row matches a real commit in `git log <base>..HEAD`;
-   each check the log claims appears in the timeline.
+4. Cross-check yourself, reading the timeline as `references/decision-log.md`
+   step 2 says: a subagent may find the mismatches in a long timeline, and
+   step 6's review is a second look, but you confirm each and map every
+   condition yourself. Each progress row matches a real commit in
+   `git log <base>..HEAD`; each check the log claims appears in the timeline.
    For each acceptance item, read one test that carries it against
    `principles/test-behavior.md`; one that would pass with the feature
    removed does not count for that item, so report it as 未证实.
@@ -255,7 +272,8 @@ is released only at step 10.
 5. Detection, instead of a guard: `run-state.sh scope <slug>` (protected or
    outside-scope files changed); each `.dflow/<slug>-<name>` check script
    against its SHA-256 in the first `start` row, or in the last
-   `correction` row that changed it; `timeline.py --danger <ids>`
+   `correction` row that changed it, and the baseline against the `start`
+   row in a no-commit run; `timeline.py --danger <ids>`
    (forbidden git commands, whole multi-line commands scanned; exit 1 when
    any); remote refs
    against the `start` hash, reported as "未观察到变化" or "有变化" (this
@@ -278,22 +296,68 @@ is released only at step 10.
    need no new authority in one batch, with the failure path the finding
    names checked, not only the old tests. Skip the batch when the deadline
    leaves no time for its checks and step 8. Log each fix as `side`, then
-   redo steps 2, 4, and 5. A 多线 run does not fix in the main session:
+   redo steps 2–5, with a new timeline, so the cross-check sees the fixes
+   and the rows written for them. A 多线 run does not fix in the main session:
    the batch goes to one fix line, verified and landed per
    `playbooks/lines.md`, and its attempt reaches an end state before step 8.
 8. Review the fix once: if anything was committed after the review head,
-   give the reviewer of step 6, run the same way, the first review, `git log -p <review
-   head>..HEAD`, and the current code around each touched path; ask whether
+   give the reviewer of step 6, run the same way, the first review,
+   `git log -p <review head>..HEAD`, the new timeline, and the
+   current code around each touched path; ask whether
    each fix resolves the whole finding, what related paths it missed, and
-   whether the log or docs now claim more than the code does. After this,
-   commit nothing more, not even wording; what it finds goes to the user.
-   Unavailable: the range `<review head>..HEAD` is 未审查.
+   whether the log or docs now claim more than the code does or claim a
+   check the timeline does not show. After this, change no product, test,
+   or doc file, not even wording: only log rows and the run's own files
+   (close, release). What it finds goes to the user; log a
+   `correction` row for each row it shows wrong or broader than its
+   evidence. Unavailable: the range `<review head>..HEAD` is 未审查.
 9. Log `close`; the decision column is exactly 完成, 部分完成, or 受阻,
-   judged by the conditions, not by a clean review.
+   judged by the conditions after the corrections, not by a clean review: a
+   condition that a remaining finding disproves has not passed.
 10. Stop the loop (Codex: `update_goal` `complete`, or `blocked` when 受阻;
    `complete` ends the goal's objective, running rounds until Close, not
    the product goal: a 部分完成 stays 部分完成 in the row and the reply),
    `run-state.sh release <slug>` (stops this run's caffeinate only), notify.
+
+## No-commit runs
+
+Only when the user approved keeping a dirty tree uncommitted (Frame step 3);
+the manifest has `commit: no`, and `run-state.sh` compares the tree with the
+baseline written at 开始 (what it sees and refuses: `scripts/run-state-snap.py`).
+Not with 并行 or 多线, which land commits. Everything else in this file
+holds, with these replacements:
+
+- `run-state.sh state <slug>` stands for the commit SHA wherever this file
+  names one: a progress row's `commit <sha>`, the HEAD a condition passed on,
+  the review head, a pass inherited at Pickup. Run `baseline`, `state`,
+  `changed`, and `scope` only while nothing else writes in the repo.
+- Round step 1: `check` already tells the baseline's files from new changes;
+  act on what it reports, not on `git status`. Exit 3 does not occur.
+- Round step 5: progress logs `round` with `state <id>`. The first time the
+  run edits or deletes a path, copy it first to `.dflow/<slug>.before/<path>`
+  and never overwrite that copy: it is the path's content at the baseline (no
+  copy means the run created it). Before each step, also copy the files it
+  will edit; with no progress, restore from those copies (a file may hold
+  earlier uncommitted work, so never `git restore` it) and delete only files
+  you created.
+- Round steps 6 and 10 and Pause: where they commit, log the `side`,
+  `round`, or `pause` row with its state id; there is no `wip:` commit. Pause
+  restores an unfinished step from its copies, or names its paths in the
+  `pause` row.
+- Pickup: inherit a pass only at the current state id; find the next step
+  from the log, not `git log`.
+- Close step 2 reruns the conditions on the tree. Step 4 matches each
+  progress row to the edits the timeline shows before its state id. Steps 6
+  and 8: at each review head save `run-state.sh changed <slug>` as
+  `changed-<state id>.jsonl` in the close directory and copy the listed
+  paths that exist into `review-<state id>/` beside it. In place of
+  `git log -p`, the reviewer gets that list, `.dflow/<slug>.before/` (the
+  content before the run; a `missing` entry is a deletion), and the current
+  paths. Step 8 runs when the state id changed and also gets the first
+  review's list and copies.
+- Reply: `提交：无（不提交运行），最终 state <id>`; to undo a change, copy
+  its path back from `.dflow/<slug>.before/` (or delete a file the run
+  created), never `git revert`.
 
 **Reply:**
 
@@ -306,7 +370,7 @@ is released only at step 10.
 - 收尾检测：受保护路径 <未改 / 改了哪些>；范围外文件 <无 / 哪些>；危险命令 <无 / 有哪些>；远端 <未观察到变化 / 有变化>
 - 后续事项：<范围外发现；没有就省略>
 - 影响面：<见 SKILL.md>
-- 日志：.dflow/<slug>.tsv（清单 .dflow/<slug>.md）
+- 日志：.dflow/<slug>.tsv（清单 .dflow/<slug>.md）；复盘：/dflow:retro <slug>
 **需要你注意**
 审查：<实际审查模型，按 references/hosts.md>（没审就写"未审查：<原因>"）
 - <审查要点，最多 5 条，每条指向日志的某一行或某个时刻；没修或只修了一半的意见优先，两轮审查都算；审后改动没补审就写"未审查：<审查时 HEAD>..HEAD，<原因>">

@@ -233,5 +233,97 @@ sed -i '' "s/^pid: .*/pid: $xp/; s/^session: .*/session: other/" .dflow/demo.loc
 DFLOW_OWNER_COMM=none expect 1 "claim refused while a codex owner is alive" "$rs" claim demo
 kill "$xp" 2>/dev/null; rm -rf .dflow/demo.lock
 fi
+
+# commit mode keeps its order of findings: a dirty tree is reported before a bad deadline
+cp .dflow/demo.md "$t/m8"; sed -i '' "s/^deadline: .*/deadline: never/" .dflow/demo.md
+rm -rf .dflow/demo.lock; expect 0 "claim for the order test" "$rs" claim demo
+echo x > src/new.py; out=$("$rs" check demo 2>&1); rc=$?
+[ $rc = 1 ] && echo "$out" | grep -q "uncommitted changes" && ! echo "$out" | grep -q "bad deadline" && ok || bad "commit-mode order changed: $rc $out"
+rm src/new.py; out=$("$rs" check demo 2>&1); [ $? = 1 ] && echo "$out" | grep -q "^ok clean" && echo "$out" | grep -q "bad deadline" && ok || bad "commit-mode clean tree with a bad deadline: $out"
+cp "$t/m8" .dflow/demo.md; rm -rf .dflow/demo.lock
+
+# no-commit runs ("commit: no"): the dirty tree the user approved keeping is compared with its baseline
+n="$t/nc"; git init -q "$n"; cd "$n"; git config user.email t@t; git config user.name t
+mkdir -p src tests data out; echo a > src/a.py; echo t > tests/t.py; printf '/data/\n/out/\n' > .gitignore
+git add -A; git commit -qm base; nb=$(git rev-parse HEAD)
+echo old >> src/a.py; echo t2 >> tests/t.py; echo note > notes.txt; echo raw > data/r.bin; echo o0 > out/keep.bin   # dirty before the run; data/ and out/ are ignored
+mkdir -p .dflow; echo '.dflow/' >> .git/info/exclude
+nc_manifest() { # nc_manifest <slug> <allow> <protect>
+    printf 'slug: %s\nbranch: %s\nbase: %s\ndeadline: %s\ncommit: no\nallow: %s\nprotect: %s\n\n# 目标\nno-commit demo\n' \
+        "$1" "$(git rev-parse --abbrev-ref HEAD)" "$nb" "$future" "$2" "$3" > ".dflow/$1.md"
+}
+nc_manifest nc 'src/* out/*' 'tests/* data/*'
+nc_manifest nca '' 'tests/*'; expect 1 "baseline refuses an empty allow" "$rs" baseline nca
+nc_manifest ncg 'src/*' '*.bin'; out=$("$rs" baseline ncg); [ $? = 1 ] && echo "$out" | grep -q "before any directory part" && ok || bad "baseline accepted a glob it cannot list ignored files under: $out"
+[ ! -e .dflow/ncg.baseline.json ] && ok || bad "a refused baseline left a file"
+expect 1 "claim before baseline" "$rs" claim nc
+[ ! -d .dflow/nc.lock ] && ok || bad "claim before baseline took the lease"
+mt=$(python3 -I -c 'import os, sys; print(os.stat(sys.argv[1]).st_mtime_ns)' data/r.bin)   # the mtime the baseline sees
+expect 0 "baseline" "$rs" baseline nc
+expect 1 "baseline written twice" "$rs" baseline nc
+expect 0 "claim after baseline" "$rs" claim nc
+grep -qx "baseline_sha256: $(shasum -a 256 .dflow/nc.baseline.json | cut -d' ' -f1)" .dflow/nc.lock/lease && ok || bad "lease does not hold the baseline hash"
+expect 0 "the approved dirty tree passes" "$rs" check nc
+s0=$("$rs" state nc); [ "$s0" = "$("$rs" state nc)" ] && echo "$s0" | grep -Eq '^state [0-9a-f]{64}$' && ok || bad "state not stable: $s0"
+touch src/a.py; [ "$("$rs" state nc)" = "$s0" ] && ok || bad "state changed on a touch without a content change"
+cp src/a.py "$t/a.py"; echo new >> src/a.py; expect 0 "edit inside allow" "$rs" check nc
+s1=$("$rs" state nc); [ "$s1" != "$s0" ] && ok || bad "state did not follow an edit"
+"$rs" changed nc | grep -qx '\["src/a.py", "f[0-7]*:[0-9a-f]*"\]' && ok || bad "changed does not list src/a.py: $("$rs" changed nc)"
+cp "$t/a.py" src/a.py; [ "$("$rs" state nc)" = "$s0" ] && [ -z "$("$rs" changed nc)" ] && ok || bad "state not back after restoring the edit"
+echo o > out/model.bin; expect 0 "ignored output inside allow" "$rs" check nc
+[ "$("$rs" state nc)" != "$s0" ] && ok || bad "state misses an ignored output inside allow"
+rm out/model.bin; [ "$("$rs" state nc)" = "$s0" ] && ok || bad "state not back after removing the output"
+chmod +x src/a.py; [ "$("$rs" state nc)" != "$s0" ] && ok || bad "state misses an executable-bit change"; chmod -x src/a.py
+chmod +x tests/t.py; out=$("$rs" check nc); [ $? = 1 ] && echo "$out" | grep -qx "PROTECTED tests/t.py" && ok || bad "executable bit on an earlier dirty protected file: $out"
+chmod -x tests/t.py
+chmod g+w tests/t.py; out=$("$rs" check nc); [ $? = 1 ] && echo "$out" | grep -qx "PROTECTED tests/t.py" && ok || bad "a permission change without an executable bit: $out"
+chmod g-w tests/t.py; expect 0 "permissions restored" "$rs" check nc
+# an ignored output that stops being ignored keeps its content in the state id and in changed
+cp .gitignore "$t/gi"; printf '/data/\n' > .gitignore; echo o1 > out/keep.bin; s1=$("$rs" state nc)
+echo o2 > out/keep.bin; s2=$("$rs" state nc)
+[ "$s1" != "$s2" ] && "$rs" changed nc | grep -q '^\["out/keep.bin", "f[0-7]*:' && ok || bad "an output that left the ignored set: $s1 / $s2 / $("$rs" changed nc)"
+cp "$t/gi" .gitignore; echo o0 > out/keep.bin; expect 0 "ignore rules restored" "$rs" check nc
+# one link a -> "foo<LF>b<TAB>link:bar" against links a -> foo and b -> bar: joined as "path<TAB>entry" lines
+# both read "a<TAB>link:foo<LF>b<TAB>link:bar"; the state id keeps them apart
+ln -s "$(printf 'foo\nb\tlink:bar')" a; sa=$("$rs" state nc); rm a
+ln -s foo a; ln -s bar b; sb=$("$rs" state nc); rm a b
+[ -n "$sa" ] && [ "$sa" != "$sb" ] && ok || bad "state mixes up a link target with a second path: $sa / $sb"
+ln -s foo "$(printf 'src/l\nb')"; expect 0 "a path with a newline inside allow" "$rs" check nc; rm "$(printf 'src/l\nb')"
+echo x >> notes.txt; expect 1 "earlier dirty file outside allow edited" "$rs" check nc
+echo note > notes.txt; expect 0 "earlier dirty file restored" "$rs" check nc
+rm notes.txt; expect 1 "earlier untracked file outside allow deleted" "$rs" check nc; echo note > notes.txt
+echo y > other.txt; out=$("$rs" check nc); [ $? = 1 ] && echo "$out" | grep -qx "OUTSIDE other.txt" && ok || bad "new file outside allow: $out"
+out=$("$rs" scope nc); [ $? = 1 ] && echo "$out" | grep -qx "OUTSIDE other.txt" && ! echo "$out" | grep -q src/a.py && ok || bad "scope in a no-commit run: $out"
+rm other.txt
+git add src/a.py; out=$("$rs" check nc); [ $? = 1 ] && echo "$out" | grep -q "^INDEX changed" && ok || bad "staging without a content change: $out"
+git reset -q src/a.py; expect 0 "index restored" "$rs" check nc
+git update-index --skip-worktree tests/t.py; out=$("$rs" check nc); [ $? = 1 ] && echo "$out" | grep -q "skip-worktree" && ok || bad "skip-worktree not refused: $out"
+git update-index --no-skip-worktree tests/t.py
+mkdir -p src/sub; git -C src/sub init -q; echo s > src/sub/s.py; git -C src/sub add -A; git -C src/sub -c user.email=t@t -c user.name=t commit -qm s
+out=$("$rs" check nc); [ $? = 1 ] && echo "$out" | grep -q "not a file" && ok || bad "nested repository not refused: $out"
+rm -rf src/sub
+echo raw2 > data/r.bin; out=$("$rs" check nc); [ $? = 1 ] && echo "$out" | grep -qx "PROTECTED data/r.bin" && ok || bad "ignored protected file changed: $out"
+echo raw > data/r.bin; echo z > data/new.bin; expect 1 "ignored protected file added" "$rs" check nc; rm data/new.bin
+# same size and the baseline's mtime: check trusts them (documented), scope hashes
+printf 'RAW\n' > data/r.bin; python3 -I -c 'import os, sys; os.utime(sys.argv[1], ns=(int(sys.argv[2]),) * 2)' data/r.bin "$mt"
+expect 0 "check trusts size and mtime of ignored files" "$rs" check nc
+expect 1 "scope hashes ignored protected files" "$rs" scope nc
+echo raw > data/r.bin; expect 0 "ignored file restored" "$rs" check nc
+git commit -q --allow-empty -m "not allowed"; out=$("$rs" check nc); [ $? = 1 ] && echo "$out" | grep -q "is not base" && ok || bad "an empty commit in a no-commit run: $out"
+git reset -q --soft "$nb"; expect 0 "back at base" "$rs" check nc
+cp .dflow/nc.baseline.json "$t/bl"
+python3 -I -c 'import json, sys; p = sys.argv[1]; b = json.load(open(p)); b["dirty"]["notes.txt"] = "f:" + "0" * 64; json.dump(b, open(p, "w"))' .dflow/nc.baseline.json
+out=$("$rs" check nc); [ $? = 1 ] && echo "$out" | grep -q "baseline differs" && ok || bad "a valid but edited baseline after claim: $out"
+cp "$t/bl" .dflow/nc.baseline.json
+# a tracked submodule under a protect glob is refused even while it is clean; one outside every glob is fine
+m="$t/ncs"; git init -q "$t/lib"; git -C "$t/lib" -c user.email=t@t -c user.name=t commit -q --allow-empty -m lib
+git init -q "$m"; cd "$m"; git config user.email t@t; git config user.name t; mkdir -p src; echo a > src/a.py
+git -c protocol.file.allow=always submodule -q add "$t/lib" vendor/lib 2>/dev/null; git -c protocol.file.allow=always submodule -q add "$t/lib" other/lib 2>/dev/null
+git add -A; git commit -qm base; mb=$(git rev-parse HEAD); mkdir -p .dflow; echo '.dflow/' >> .git/info/exclude
+printf 'slug: ncs\nbranch: %s\nbase: %s\ndeadline: %s\ncommit: no\nallow: src/*\nprotect: vendor/lib/*\n' "$(git rev-parse --abbrev-ref HEAD)" "$mb" "$future" > .dflow/ncs.md
+out=$("$rs" baseline ncs); [ $? = 1 ] && echo "$out" | grep -q "submodule vendor/lib" && ok || bad "a clean submodule under protect: $out"
+sed -i '' 's#^protect: .*#protect: tests/*#' .dflow/ncs.md; expect 0 "a submodule outside every glob" "$rs" baseline ncs
+cd "$n"
+cd "$r"
 echo "run-state-test: $pass passed, $fail failed"
 [ "$fail" = 0 ]

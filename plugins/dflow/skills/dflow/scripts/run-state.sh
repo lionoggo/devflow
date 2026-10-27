@@ -6,10 +6,23 @@
 #   <slug>.lock/  the lease (atomic mkdir); lease file inside: session, pid, manifest_sha256, claimed_at, caffeinate_pid
 #   <slug>.tsv    decision log (scripts/log.sh); "commit <sha>" in the evidence column marks a logged commit
 #                 (a 多线 land writes "commit <new sha> from <source sha>": the new sha is the logged one)
+#   <slug>.before/  no-commit runs: each path's content before the run first changed it (playbook)
+#   <slug>.baseline.json  only with "commit: no" in the manifest: the dirty tree the user approved
+#                 keeping, written once by `baseline` before claim (scripts/run-state-snap.py)
 #
-# Usage: run-state.sh claim|check|caffeinate|release|scope <slug>
+# Usage: run-state.sh baseline|claim|check|caffeinate|release|scope|state|changed <slug>
 #        run-state.sh refresh <slug> <old manifest sha256>
-#   claim       take the lease for this session; refused while another live agent process
+# No-commit runs ("commit: no", only when the user approved keeping a dirty tree uncommitted):
+#   check and scope compare the tree with the baseline instead of requiring it clean and reading
+#   base..HEAD: HEAD stays at base, the index does not change, every path that differs from the
+#   baseline (ignored files under allow and protect directories included) is inside allow and not
+#   protected. What the comparison sees and refuses is in run-state-snap.py. Run baseline, state,
+#   changed and scope while nothing else writes in the repo.
+#   baseline    write <slug>.baseline.json; refused when it exists, after claim, or off base
+#   state       the identity of what a check or review covered ("state <id>"): HEAD, or in a
+#               no-commit run base, baseline, index and every changed path with its content
+#   changed     no-commit runs: one JSON line [path, entry] per path that differs from the baseline
+#   claim       take the lease for this session (a no-commit run: only after baseline); refused while another live agent process
 #               (claude or codex) holds it, or while the holder pid is alive and ps cannot tell
 #               what it is, and refused when this session's own pid is unknown or not running;
 #               taking over a stale lease stops the previous
@@ -36,10 +49,12 @@
 set -u
 cmd=${1:-}; slug=${2:-}; arg3=${3:-}   # kept before host detection, which reuses the positional parameters
 die() { echo "FAIL $*"; exit 1; }
-[ -n "$cmd" ] && [ -n "$slug" ] || { echo "usage: run-state.sh claim|check|caffeinate|release|scope <slug> | refresh <slug> <old manifest sha256>" >&2; exit 2; }
+usage='usage: run-state.sh baseline|claim|check|caffeinate|release|scope|state <slug> | refresh <slug> <old manifest sha256>'
+[ -n "$cmd" ] && [ -n "$slug" ] || { echo "$usage" >&2; exit 2; }
 printf '%s' "$slug" | grep -Eq '^[a-z0-9][a-z0-9-]{0,62}$' || die "slug must match [a-z0-9][a-z0-9-]{0,62}: $slug"
 root=$(git rev-parse --show-toplevel 2>/dev/null) || die "not in a git repository"
 d="$root/.dflow"; man="$d/$slug.md"; lock="$d/$slug.lock"; lease="$lock/lease"; log="$d/$slug.tsv"
+bl="$d/$slug.baseline.json"; sdir=$(cd "$(dirname "$0")" && pwd)
 host() { # host: "<claude|codex> <pid>" of the nearest agent process above this shell, or "none"
     local p=$PPID c i=0
     while [ "${p:-0}" -gt 1 ] && [ $i -lt 40 ]; do
@@ -78,7 +93,8 @@ except OSError: sys.exit(1)' "$1" "$2"; }
 install_lock() { # create $lock with this session's lease in one rename; fails when $lock exists
     local tmp="$lock.new.$$"; rm -rf "$tmp"; mkdir "$tmp" || return 1
     { echo "session: $me"; echo "pid: $mypid"; echo "manifest_sha256: $(sha "$man")"
-      echo "claimed_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "caffeinate_pid: "; } > "$tmp/lease"
+      echo "claimed_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "caffeinate_pid: "
+      echo "baseline_sha256: $([ -f "$bl" ] && sha "$bl")"; } > "$tmp/lease"
     rename "$tmp" "$lock" && return 0
     rm -rf "$tmp"; return 1
 }
@@ -108,12 +124,20 @@ need_manifest() {
     for k in slug branch base deadline; do [ -n "$(field "$man" $k)" ] || die "manifest has no '$k:'"; done
     [ "$(field "$man" slug)" = "$slug" ] || die "manifest slug is not $slug"
 }
+nocommit() { [ "$(field "$man" commit)" = no ]; }
+at_base() { # HEAD is the manifest base (a no-commit run never commits)
+    local b h; b=$(git -C "$root" rev-parse --verify -q "$(field "$man" base)^{commit}") || die "manifest base not found"
+    h=$(git -C "$root" rev-parse HEAD); [ "$h" = "$b" ] || die "HEAD $h is not base $b: a no-commit run never commits"
+}
+# snap <make|check|scope|state|changed>: the no-commit baseline, written and compared (see the header)
+snap() { python3 -I "$sdir/run-state-snap.py" "$1" "$root" "$man" "$bl"; }
 
 case $cmd in
 claim)
     need_manifest; [ -n "$me" ] || die "no session id: run inside Claude Code or Codex (CLAUDE_CODE_SESSION_ID / CODEX_THREAD_ID)"
     printf '%s' "${mypid:-}" | grep -Eq '^[1-9][0-9]*$' && kill -0 "$mypid" 2>/dev/null ||
         die "cannot tell this session's agent pid (${mypid:-none}); a lease without a live owner pid would look stale at once"
+    ! nocommit || [ -f "$bl" ] || die "no baseline $bl: a no-commit run writes it (run-state.sh baseline) before claim"
     mkdir -p "$d"
     if install_lock; then echo "ok claimed $slug"; exit 0; fi
     if [ ! -s "$lease" ]; then # a lock without a lease (an older claim died between mkdir and writing it)
@@ -145,6 +169,14 @@ check)
     [ "$(field "$lease" manifest_sha256)" = "$(sha "$man")" ] && echo "ok manifest unchanged" || die "manifest changed since claim"
     br=$(git -C "$root" rev-parse --abbrev-ref HEAD)
     [ "$br" = "$(field "$man" branch)" ] && echo "ok branch $br" || die "on branch $br, expected $(field "$man" branch)"
+    if nocommit; then
+        [ -f "$bl" ] || die "no baseline $bl; a no-commit run writes it before claim"
+        [ "$(field "$lease" baseline_sha256)" = "$(sha "$bl")" ] && echo "ok baseline unchanged" || die "baseline differs from the one this lease was claimed with"
+        at_base; snap check || exit 1
+        dl=$(epoch "$(field "$man" deadline)") || die "bad deadline"
+        [ "$(date -u +%s)" -lt "$dl" ] && echo "ok before deadline" || { echo "DEADLINE passed"; exit 4; }
+        exit 0
+    fi
     dirty=$(git -C "$root" status --porcelain --untracked-files=all | grep -v ' \.dflow/' || true)
     [ -z "$dirty" ] && echo "ok clean" || { echo "FAIL uncommitted changes of unknown origin:"; echo "$dirty"; exit 1; }
     logged=$(awk -F'\t' '{ s = $5; while (match(s, /commit [0-9a-f]{7,40}/)) { print substr(s, RSTART + 7, RLENGTH - 7); s = substr(s, RSTART + RLENGTH) } }' "$log" 2>/dev/null)
@@ -193,8 +225,22 @@ release)
     cp=$(field "$lease" caffeinate_pid)
     if [ -n "$cp" ] && ps -o comm= -p "$cp" 2>/dev/null | grep -q caffeinate; then kill "$cp" && echo "ok stopped caffeinate $cp"; fi
     rm -rf "$lock"; echo "ok released $slug" ;;
+baseline)
+    need_manifest; nocommit || die "baseline is only for a manifest with 'commit: no'"
+    [ ! -e "$bl" ] || die "baseline $bl exists; it is written once, at 开始"
+    [ ! -d "$lock" ] || die "write the baseline before claim"
+    at_base; snap make || exit 1
+    echo "ok baseline $(sha "$bl")" ;;
+state)
+    need_manifest
+    if nocommit; then [ -f "$bl" ] || die "no baseline $bl"; snap state || exit 1; else echo "state $(git -C "$root" rev-parse HEAD)"; fi ;;
+changed)
+    need_manifest; nocommit || die "changed is for no-commit runs; use git diff <review head>..HEAD"
+    [ -f "$bl" ] || die "no baseline $bl"; snap changed || exit 1 ;;
 scope)
-    need_manifest; set -f
+    need_manifest
+    if nocommit; then [ -f "$bl" ] || die "no baseline $bl"; snap scope || exit 1; exit 0; fi
+    set -f
     base=$(field "$man" base); allow=$(field "$man" allow); protect=$(field "$man" protect)
     bad=0
     while IFS= read -r f; do
@@ -204,5 +250,5 @@ scope)
         [ -z "$allow" ] || [ $inside = 1 ] || { echo "OUTSIDE $f"; bad=1; }
     done <<< "$(git -C "$root" diff --name-only "$base"..HEAD)"
     [ $bad = 0 ] && echo "ok scope"; exit $bad ;;
-*) echo "usage: run-state.sh claim|check|caffeinate|release|scope <slug> | refresh <slug> <old manifest sha256>" >&2; exit 2 ;;
+*) echo "$usage" >&2; exit 2 ;;
 esac

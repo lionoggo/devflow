@@ -13,6 +13,8 @@ person reviews it through 复盘 (`playbooks/retro.md`); see **How a person read
 - **Write rows with** `scripts/log.sh <file> <phase> <decision> <why>
   <evidence> <result>`. Columns: `ts phase decision why evidence result`.
   Evidence is a pointer (commit SHA, `path:line`, artifact path), never prose.
+  A result you ran points to its output or the call; a result you only
+  expect ("修复前会失败") is not evidence: put it in `why` as 推测（未运行）.
 - **What gets a row:** a fork chosen, a unit done with its check result, a
   pivot or revert and what triggered it, a blocker, a gate. Not every command.
   At least one row per unit. Plain words per `references/unslop.md`.

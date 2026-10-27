@@ -22,14 +22,17 @@ to this file's directory.
    table below. "新任务" or "new task" means re-match. Short follow-ups
    ("继续", "好的") stay in the current playbook. A reply that changes the
    action or grants new authority ("你来改", "开始做", "按这个实施")
-   re-matches; it keeps the context, not the playbook.
-3. Make the route visible before any other work, the way pstack does: put
-   the playbook's steps in the todo tool verbatim (TodoWrite, TaskCreate
-   found via ToolSearch, or Codex update_plan); the reply does not repeat
-   them. If you did not put the steps in a todo tool this turn (none exists,
-   or you did not call it), your first text this turn, right after
-   reading the playbook and before any other tool call, is one line: `按「<name>」流程：<step> → <step> → …`. One of
-   the two always happens. The final reply does not repeat the line unless
+   re-matches; it keeps the context, not the playbook. So does a new request
+   after a run's Close, or after a playbook's work is done and reported, in
+   this session, even without `/dflow`; a short follow-up about that result
+   ("为什么这样", "继续") still stays. "复盘下进展" there is 进展 or 复盘,
+   and both run their collection steps; never answer them from memory.
+3. Make the route visible before any other work: right after reading the
+   playbook, before any other tool call, your first text is one line:
+   `按「<name>」流程：<step> → <step> → …`. When a progress note is asked
+   for first, this line is that note. A todo tool, when the session has one
+   (`references/hosts.md`), may track the steps besides; it never replaces
+   the line. The final reply does not repeat the line unless
    the turn had no earlier text. In anything the user reads, call a
    playbook 流程, never 剧本. A step you skip is named with `跳过：<原因>` in
    the final reply.
