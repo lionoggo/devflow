@@ -14,11 +14,29 @@ hits=0
 for f in "$@"; do
     name=$f; [ "$f" = - ] && name=stdin
     out=$(awk -v name="$name" -F'\t' '
+        # A code span opens with a run of n backticks and closes at the next run of exactly n;
+        # a run with no closer stays as text.
+        function nocode(s,    out, i, j, n, m, rest, closed) {
+            out = ""
+            while ((i = index(s, "`")) > 0) {
+                out = out substr(s, 1, i - 1); s = substr(s, i)
+                for (n = 0; substr(s, n + 1, 1) == "`"; n++) ;
+                rest = substr(s, n + 1); closed = 0
+                while ((j = index(rest, "`")) > 0) {
+                    for (m = 0; substr(rest, j + m, 1) == "`"; m++) ;
+                    if (m == n) { closed = 1; break }
+                    rest = substr(rest, j + m)
+                }
+                if (closed) s = substr(rest, j + n)
+                else { out = out substr(s, 1, n); s = substr(s, n + 1) }
+            }
+            return out s
+        }
         NR == FNR { if ($0 !~ /^#/ && NF >= 3) { n++; rule[n] = $1; lang[n] = $2; term[n] = tolower($3); skip[n] = $4 } next }
         /^[ \t]*```/ { fence = !fence; next }
         fence || /^[ \t]*>/ || /<!-- slop-ok:/ { next }
         {
-            line = $0; gsub(/`[^`]*`/, "", line); low = tolower(line)
+            line = nocode($0); low = tolower(line)
             for (i = 1; i <= n; i++) {
                 rest = low; off = 0; found = 0
                 while ((p = index(rest, term[i])) > 0) {
