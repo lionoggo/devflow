@@ -128,8 +128,8 @@ loop, never a second one. Its Round keeps step 1 (`run-state.sh check`),
 then replaces steps 3–5 with one collection: read the receipts
 (`agent.sh wait` for headless lines, `lines.sh receipt` for the rest),
 update `progress_at` and spot stuck lines, `lines.sh lock show` each
-resource in `standing.md`, verify and land what is ready by SHA, refill the
-window, and end with `lines.sh status <slug>`. A landing commit is the
+resource in `standing.md`, verify and land what is ready by SHA (with every finished stage's
+conditions, `playbooks/lines.md` step 5), and refill the window. A landing commit is the
 round's progress; a round with none logs `round` with what it waits on.
 
 1. `$S/scripts/run-state.sh check <slug>`:
@@ -210,7 +210,7 @@ one `wip:` commit (the one exception to committing only checked units). Log
 tree is clean, and the first step on resume.
 
 A 多线 run, before the `pause` row: dispatch nothing new, collect once,
-then stop every running line by the stop protocol in `playbooks/lines.md`
+then stop every running line by the stop protocol in `references/lines-mechanics.md`
 and confirm each stop. When every stop is confirmed, log `pause` and
 release the lease. A stop that cannot be confirmed: `state=stop-unconfirmed`,
 a `blocked` row, notify, and keep the lease: do not log `pause` and do not
@@ -233,7 +233,7 @@ pause only after that.
 5. A run that paused on a `wip:` commit: verify it or revert it first. A
    parallel run: handle each `dispatched` unit per the Pickup section of
    `references/parallel.md`. A 多线 run: run **Recovery** in
-   `playbooks/lines.md` instead; a branch with commits is never done
+   `references/lines-mechanics.md` instead; a branch with commits is never done
    because of them, only a receipt delivers.
 6. Do not redo committed units; find the next step from the log and
    `git log`.
@@ -250,7 +250,7 @@ an end state: log a `blocked` row, notify, keep the lease, and stop here
 without steps 1–10; reply naming the line and what would confirm its stop,
 and close only after that.
 `lines.sh lock show` each resource in `standing.md`, none naming this
-slug; then step 7 of **Steps** in `playbooks/lines.md` (shared-file line,
+slug; then step 6 (Close) of **Steps** in `playbooks/lines.md` (shared-file line,
 cleanup). The steps below follow, with step 7 changed as it says; the lease
 is released only at step 10.
 

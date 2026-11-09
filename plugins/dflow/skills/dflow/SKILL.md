@@ -47,7 +47,7 @@ brief, without matching a playbook, handing off, starting 无人值守, or
 switching branches beyond the brief's own 准备 step. At the time box, deliver
 partial results. A brief with a 回执 field (多线): end by publishing that
 receipt as it says, the full report to `.tmp` first, then moved into place
-(`playbooks/lines.md` **Receipts and done**). Without one (并行): end with
+(`references/lines-mechanics.md` **Receipts**). Without one (并行): end with
 the brief's 报告 as your final message.
 
 **Host.** Every playbook runs in Claude Code and in Codex. The playbooks

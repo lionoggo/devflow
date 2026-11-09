@@ -1,10 +1,10 @@
 ### 多线 (lines)
 
-**You own the program, never the code. Register the lines, write their
-briefs, collect their receipts, land what is verified at its exact commit.**
-From pstack `orchestrate` (its brief, store, ledger, drain and liveness
-rules; not its PR stack, stacker, or cloud parts). Principles: 小步可验证,
-真实证据, 以现状为准, 结构化教训.
+**You run the program, never the code. Decide which line does each piece of
+work, then check what each one produces, and land it at the exact commit
+that passed.** From pstack `orchestrate` (0.15.36: run it with your own
+tools, no relaying between agents; not its PR stack or cloud parts).
+Principles: 小步可验证, 真实证据, 以现状为准.
 
 `$S` is this skill's directory. A line is one unit of work given to one
 writer (a subagent, a headless agent, or a visible window) in its own
@@ -12,396 +12,169 @@ worktree. Saying "多线" or "并行", or asking for separate worktrees, approve
 the worktrees and branches this playbook creates and removes, as "并行" does
 in `references/parallel.md`. A request routed here without any of these gets
 its frame with the line plan and "说"多线"即同意为这些线各建一个 worktree"
-before any worktree is made.
+before any worktree is made. The mechanics (receipts, attempts and the stop
+protocol, shared-resource locks, the ledger, landing failures, recovery) are
+in `references/lines-mechanics.md`; read the part you reach.
 
-Three rules carry the rest:
-- A completion is a receipt in a file, not a message. Queue it; handle it at
-  the next collection point.
-- A running line takes no new instructions. To change its direction, stop
-  it and start a new attempt with the full scope.
-- Every brief carries `standing.md` verbatim.
+## Topology
 
-## What the main session does
-
-Only three things: the shared prep units the table marks `carrier prep`
-(you build and commit them yourself, first, as normal units); writing
-briefs; landing verified lines mechanically. A conflicted merge, a rebase,
-a shared file edited at the end (README, registries), or any other code
-change is a new line, registered in the table like the rest; you never
-edit them yourself. Never review a diff inline while collecting: a delivery
-that needs review gets a verifier line.
-
-Writers per file: the unit table, `ledger.tsv`, `status.md`, and the
-decision log `.dflow/<slug>.tsv` are yours alone. A worker writes only its
-own report; its decision rows go inside the report, and you copy them into
-the log with phase `decision` and `<id>/<attempt>` at the head of the
-evidence.
+- **One writer per line.** Each line has its own worktree and branch, and
+  only its worker writes there. You write the unit table, the ledger, and
+  the decision log `.dflow/<slug>.tsv`; a worker writes only its own report,
+  and you copy its decision rows into the log (phase `decision`,
+  `<id>/<attempt>` at the head of the evidence).
+- **You never edit code.** You build only the shared prep units the table
+  marks `carrier prep`, first; a conflicted merge, a rebase, a shared file
+  edited at the end (README, registries), or any other code change is a new
+  line.
+- **A fresh worker per independent task.** Its brief carries everything it
+  needs, each upstream report it depends on pasted in full: workers cannot
+  see each other. Work coupled at run time (one state machine, an animation
+  and its controller, an extraction and the design read from it) stays in
+  one line, or its shared contract lands first as a prep unit.
+- **A running line takes no new instructions.** To change its direction,
+  stop it and start a new attempt with the full scope. Never message a
+  worker to check on it. Waiting is one background waiter per running
+  line that wakes you (headless: a background shell repeating `agent.sh
+  wait` until it prints something other than `running`; Codex host: the
+  matching row of `references/hosts.md`), or the next Round; never a
+  sleep loop in the main session.
+- **A verifier is never the author and runs on the other model family**
+  (claude → codex, codex → claude), named explicitly.
+- **Start with one line.** Take it through brief, worker, receipt,
+  verification, and landing before the rest, so a flaw in the brief costs
+  one line, and fix the brief template and the verify recipe from what it
+  shows. For near-identical cheap lines, the first line is that pilot. Then keep at most about 5 running, starting the next as each one
+  ends, never in blocking batches.
 
 ## Carriers
 
 Default to a background carrier: a same-host line goes to a subagent;
 another model family, or work that must survive this session, goes headless.
 A line is visible only when the user asks to watch it ("可见", "开窗口") or
-it needs a human in a window (a GUI login); to look at a background line, use
-`agent.sh peek` or `lines.sh status --print`. Every carrier except the Claude subagent gets its worktree from
-`$S/scripts/parallel.sh worktree <slug> <id>`; put the printed branch in the
-table.
+it needs a human in a window (a GUI login). Every carrier except the Claude
+subagent gets its worktree from `$S/scripts/parallel.sh worktree <slug>
+<id>`; put the printed branch in the table.
 
 | Carrier | Start | Done when | Stop |
 |---|---|---|---|
 | subagent, Claude host | Agent with `isolation: "worktree"`, `run_in_background: true`, the brief as prompt; take the branch from the report | it wakes you and the receipt is valid | TaskStop with its id; confirmed when the tool says it stopped |
 | subagent, Codex host | `parallel.sh worktree`, then `spawn_agent` (`fork_context: false`) with the brief, its 准备 the working-directory form (`references/unit-brief.md`) | `wait_agent` returns it and the receipt is valid | `close_agent`; confirmed when it returns |
-| headless, either host | `parallel.sh worktree`, then `$S/scripts/agent.sh start <slug> <id> <attempt> <brief> <worktree> <claude\|codex> <limit>`, `<limit>` twice the brief's time box in seconds (default 7200): the run keeps that deadline itself, so it stops even if this session dies; it refuses a brief whose first line is not `dflow 线 <slug>/<id>/<attempt>` for these arguments, and an attempt already claimed; with no model it runs the other host's model; record the pid it prints in `agent` | `agent.sh wait <slug> <id> <attempt> 50 <limit>` prints `delivered <state> <sha\|path>`; pass the same `<limit>` as at start (`running (timeout, not stopped)` means the run's own deadline passed but part of it would not die: treat it as 停止未确认; past it the worker is stopped when its identity checks out, and only reported when it cannot; the default is 3600) | `agent.sh stop <slug> <id> <attempt>`; exit 0 is confirmed, `not stopped: …` is not |
-| visible, either host | `parallel.sh worktree`, then `orca agent launch --agent <claude\|codex> --worktree path:<wt> --prompt "<brief text>" --surface terminal --json` (record the terminal handle in `agent`); no Orca: `tmux new-window -c <wt> '<cmd> "<brief text>"'`, where `<cmd>` is `claude --dangerously-skip-permissions` or `codex --dangerously-bypass-approvals-and-sandbox`; neither: print the command for the user to run | `lines.sh receipt <slug> <id> <attempt>` exits 0; the window may stay open | send one stop sentence into the window (Orca terminal send per `orca-cli`, or `tmux send-keys`), or ask the user; confirmed only when its agent process is gone or the user says it stopped |
+| headless, either host | `parallel.sh worktree`, then `$S/scripts/agent.sh start <slug> <id> <attempt> <brief> <worktree> <claude\|codex> <limit>`, `<limit>` twice the brief's time box in seconds (default 7200; the run keeps that deadline itself); record the pid it prints in `agent` | `agent.sh wait <slug> <id> <attempt> 50 <limit>` prints `delivered <state> <sha\|path>` (same `<limit>`; `running (timeout, not stopped)` is 停止未确认) | `agent.sh stop <slug> <id> <attempt>`; exit 0 is confirmed, `not stopped: …` is not |
+| visible, either host | `parallel.sh worktree`, then `orca agent launch --agent <claude\|codex> --worktree path:<wt> --prompt "<brief text>" --surface terminal --json` (record the terminal handle in `agent`); no Orca: `tmux new-window -c <wt> '<cmd> "<brief text>"'`, `<cmd>` being `claude --dangerously-skip-permissions` or `codex --dangerously-bypass-approvals-and-sandbox`; neither: print the command for the user | `lines.sh receipt <slug> <id> <attempt>` exits 0 | send one stop sentence into the window, or ask the user; confirmed only when its agent process is gone or the user says it stopped |
 
 Headless and visible lines run with permissions fully open, like ccy and cxy;
 that is why each gets its own worktree and a brief that forbids everything
-outside it. Host details are in `references/hosts.md`.
+outside it (`references/hosts.md`). A visible Claude line in a new worktree
+first waits on "Is this a project you trust" with no output: read its window
+once after the start, and when it sits there, ask the user to confirm it;
+never press it yourself or edit the trust settings.
 
-A visible line's first look comes at the first collection after its start:
-read its window (`tmux capture-pane -p -t <target>`, or the Orca terminal
-read per `orca-cli`). Claude Code asks "Is this a project you trust" the
-first time it enters a new worktree, and the line waits there with no
-output. When it sits on that prompt, ask the user to confirm it in the
-window; never press it yourself or edit the trust settings. Headless lines
-do not stop there (measured 2026-10-24).
+## Supervision
 
-Without `ps`, a process's identity cannot be checked: `agent.sh` then sends
-no signal. `wait` still reports whether it lives and when it is past its
-limit, but does not stop it; `stop` prints `not stopped: …`.
+- **Each brief names the evidence that proves the line done** (a command
+  and its expected output, a control-skill check, an artifact), the goal
+  restated, the paths it may and may not write, and the actions it must not
+  take (`references/unit-brief.md`). A field you cannot fill is a line not
+  yet scoped: do not dispatch it.
+- **Read the diff or the artifact, not only the report.** A green test run
+  is an input to a verdict, not the verdict. A verdict covers one SHA.
+- **Send back drift.** Work outside the brief's scope, or grown past what
+  was asked, goes back as a new attempt; keep only what the goal needs and
+  park the rest as follow-ups.
+- **Check live state before you report** (the line's branch, its receipt,
+  `agent.sh peek`), not the last thing a worker said. Account for every
+  attempt you started: landed, done, dead, or stopped.
+- **Judge a stall by output, not status text** (a new commit, the receipt,
+  a headless output file that grew). A line is stuck only past its brief's
+  time box with no progress. Retry by cause: a smaller scope after a usage
+  cap or out of memory, the same brief after a network drop, another model
+  after a tool error, one retry when unknown. After two failed retries, mark
+  it `dead` and replan around it.
+- **Ask the user only for a real decision or a blocker** (a `gate` row via
+  `$S/scripts/log.sh`, closed by a later `gate` row with the same decision
+  and result `closed`); route other work around it. Retries, rebases, and
+  "should I keep going" never reach the user.
 
 ## Steps
 
-1. **Frame.** Write the done condition as a count ("12 lines landed, each
-   with a pass in the ledger at its source SHA and a `commit <landed sha> from
-   <source sha>` row in the log"), the number of lines, and the time budget. If one
-   agent could finish it inside the budget, stop here and use the normal
-   playbook (实施, or 并行 inside it). Split only into lines that each
-   still work, and can be verified, when landed alone; work coupled at
-   run time (one state machine, an animation and its controller, an
-   extraction and the design read from it) goes to one line, or its shared
-   contract lands first as a prep unit. Present the frame once; reversible
-   prep goes on without waiting. Overnight or longer than about an hour:
-   frame it as 无人值守 instead, with 多线 as its way of working (see
-   **Rounds**).
-2. **Ledger.** Write the manifest `.dflow/<slug>.md` in the format of
-   `playbooks/unattended.md` (On "开始" step 3): a `key: value` block with
-   `slug`, `base`, `deadline` (the time budget as an absolute UTC time),
-   `allow` and `protect`, then the goal and the acceptance in prose. An
-   attended run writes it too: recovery rereads it, and `parallel.sh
-   overlap` refuses to run without it or without `allow` (`protect: -`
-   means nothing is protected). No manifest, no dispatch. Then `$S/scripts/parallel.sh prepare <slug>` (clean tree,
-   as in `references/parallel.md`), then `$S/scripts/lines.sh init <slug>`: it
-   creates `.dflow/<slug>/` with `ledger.tsv` and an empty `standing.md`, and
-   pads an old 10-column table with `carrier model attempt brief report
-   progress_at` as `-`. Add one row per line with `lines.sh line set <slug>
-   <id> paths=<globs> deps=<ids> state=planned` (it adds a missing row). Run `parallel.sh overlap <slug>` until it passes.
-   Write the standing orders before any dispatch: numbered lines, one
-   constraint each (model policy, verification bar, forbidden paths, shared
-   resources and their lock names). When you catch yourself restating an
-   instruction, append it here first.
-3. **Pilot.** Run one line end to end: brief, worker, receipt, verification,
-   ledger row, landing. Fix the brief template and the verify recipe from
-   what it shows before dispatching the rest. For near-identical cheap
-   lines, the first line is the pilot, run as a normal line.
-4. **Dispatch.** For each ready line (its deps landed): write
+1. **Frame.** The done condition as a count ("12 lines landed, each with a
+   pass in the ledger at its source SHA and a `commit <landed sha> from
+   <source sha>` row in the log"), the lines, and the time budget. If one
+   agent could finish it inside the budget, use the normal playbook (实施,
+   or 并行 inside it). Split only into lines that each still work, and can
+   be verified, when landed alone. Present the frame once; reversible prep goes on
+   without waiting. Overnight or longer than about an hour: frame it as
+   无人值守, with 多线 as its way of working (**Rounds** below).
+2. **Prepare.** Write the manifest `.dflow/<slug>.md` in the format of
+   `playbooks/unattended.md` (On "开始" step 3: `slug`, `base`, `deadline`,
+   `allow`, `protect`, then goal and acceptance; `protect: -` means nothing
+   is protected), attended runs too: recovery rereads it, and `parallel.sh
+   overlap` refuses to run without it. No manifest, no dispatch. Then
+   `$S/scripts/parallel.sh prepare <slug>`, `$S/scripts/lines.sh init
+   <slug>`, one `lines.sh line set <slug> <id> paths=<globs> deps=<ids>
+   state=planned` per line, and `parallel.sh overlap <slug>` until it
+   passes. Every shared resource two lines cannot use at once is named in
+   `.dflow/<slug>/standing.md` with its lock name
+   (`references/lines-mechanics.md` **Shared resources**); other constraints
+   every brief must repeat (model policy, verification bar) go there too,
+   when there are any.
+3. **Dispatch** each ready line (its deps landed): write
    `.dflow/<slug>/briefs/<id>-<attempt>.md` from `references/unit-brief.md`,
-   then `lines.sh line set <slug> <id> state=dispatched base=<HEAD>
-   carrier=<…> model=<…> attempt=<n> brief=<path> report=<path>
-   dispatched_at=<ts>`, then start it per **Carriers**. Keep a rolling
-   window of at most about 5 running lines; refill as each one finishes,
-   never in blocking batches. Put upstream reports into downstream briefs:
-   workers cannot see each other.
-5. **Collect.** At each collection point (**When to collect**): read each
-   delivery with `lines.sh receipt` (or `agent.sh wait` for headless), copy
-   its decision rows into the log, set `state` and `progress_at`, and queue
-   verification. A visible line's first collection also reads its window
-   (**Carriers**). Nothing else happens inside a collection.
-6. **Verify and land.** Per **Verification** and **Landing**, continuously,
-   from the first verified line on. Landing is never a final phase.
-7. **Close.** Collect once more. Reconcile every attempt to an end state
+   `lines.sh line set <slug> <id> state=dispatched base=<HEAD> carrier=<…>
+   model=<…> attempt=<n> brief=<path> report=<path> dispatched_at=<ts>`, then
+   start it per **Carriers** and set `branch=` to the branch it printed or
+   reported (`parallel.sh land` refuses a line without one).
+4. **Collect** when a line wakes you and before every report to the user:
+   read each delivery (`lines.sh receipt`, or `agent.sh wait` for headless),
+   copy its decision rows into the log, set `state` and `progress_at`.
+   Delivery rules: `references/lines-mechanics.md` **Receipts**. To look
+   without writing anything: `lines.sh status <slug> --print`.
+5. **Verify and land,** from the first delivered line on; landing is never a
+   final phase. When the line's check is one cheap command, the brief names
+   it (`验证     单命令验证：<命令>`), the worker reports its output, and
+   you spot-check it. Expensive, judgment-laden (animation, game feel, a
+   design read from code), or wide-impact work gets a verifier line `v-<id>`
+   (`paths=-`, `base=<the SHA it verifies>`, its own `parallel.sh worktree`,
+   read-only, checking the line's 验收 items one by one, an unchecked one
+   making it `blocked`). Record each verdict with `lines.sh ledger record`;
+   a failed SHA is never re-verified as it is, it gets a fix attempt. Land
+   one line at a time in dependency order: `parallel.sh land <slug> <id>
+   <sha>` (it checks scope, the ledger, and the receipt, and refuses a branch
+   that moved), run the line's checks, every finished stage's conditions,
+   and the protected checks in the main tree without leaving files behind, then `git add` only the line's paths,
+   commit once, `parallel.sh landed <slug> <id>`, `lines.sh line set <slug>
+   <id> state=landed landed=<new sha>`, and log `commit <new sha> from
+   <sha>`. A failure: `references/lines-mechanics.md` **Landing failures**.
+6. **Close.** Collect once more; bring every attempt to an end state
    (landed, dead, stopped, or 停止未确认 with what you did about it). Shared
-   files (README, registries) go to one more registered line after the
-   lines they depend on land, verified and landed like the rest. Then, on
-   the final HEAD, check the done condition and every acceptance item of
-   the manifest one by one, each with its evidence (the per-line passes do
-   not add up to this). Delete the `refs/dflow/<slug>/` refs of lines that
-   landed or died. `lines.sh lock show` each resource in the standing
-   orders; none should name this slug. `parallel.sh cleanup
-   <slug>` removes only lines in state `landed`, `done`, `dead`, `stopped`,
-   or `planned` (never dispatched); it keeps and lists `dispatched`,
-   `stop-unconfirmed`, any other state, and a landed line whose branch has
-   commits past what landed. Name the kept ones in the reply. Its ignored
-   and untracked file rules are those of `references/parallel.md`. Turn repeated corrections into
-   `standing.md` lines or brief-template changes. Then run "复盘 <slug>" on
-   this run's log (the workers' decision rows are already in it). Leave `.dflow/<slug>/` in place: it is the postmortem.
+   files go to one more line after the lines they depend on land. On the
+   final HEAD, check the done condition and every acceptance item of the
+   manifest one by one with its evidence (the per-line passes do not add up
+   to this). Delete `refs/dflow/<slug>/` refs of landed or dead lines;
+   `lines.sh lock show` each resource in `standing.md` names no line of this
+   slug; `parallel.sh cleanup <slug>` and name what it keeps. Then run
+   "复盘 <slug>". Leave `.dflow/<slug>/` in place: it is the postmortem.
 
 At about 70% of the time budget, dispatch nothing new and land what is
 verified.
 
-## Receipts and done
-
-A worker ends every attempt by publishing `.dflow/<slug>/reports/<id>-<attempt>.md`
-in the main repo (the brief gives its absolute path; a headless line also
-has it in `$DFLOW_RECEIPT`). An attempt number runs once: `agent.sh start`
-claims it atomically (`.dflow/<slug>/run/<id>-<attempt>.claim`) and refuses
-one already claimed, also when two starts race. The report's first line is
-exactly:
-
-```text
-RECEIPT <id> <attempt> <done|partial|blocked> <sha|path>
-```
-
-Below it: the commands it ran with their output, deviations, decision rows.
-The worker writes the whole report to `<report>.tmp` first, then moves it
-into place in one step (`mv <report>.tmp <report>`). The file at the report
-path appearing is the delivery; after that, the line writes nothing more,
-the report included.
-
-- A line is delivered only when `lines.sh receipt <slug> <id> <attempt>`
-  exits 0 for the table's current attempt. It reads only the report path,
-  never `<report>.tmp`: a `.tmp` alone is not a delivery. A commit on its
-  branch, a log line, or a quiet window is a progress signal, never a
-  delivery.
-- A read-only line (research, a verifier) delivers a path instead of a SHA.
-  It is done on its receipt; it never goes into the ledger, which holds
-  commits only. Set its state to `done`.
-- `blocked` is not success. `partial` lands only the part its SHA covers,
-  after verification like any other.
-- A receipt for an older attempt never stands in for the current one; it
-  goes to reconciliation only.
-- Subagent and headless lines also need their process to have ended
-  (`agent.sh wait` prints `exited without receipt` when it ended without
-  one: treat that as a failed attempt). A visible line is done on its
-  receipt alone.
-
-## Attempts and stopping
-
-`attempt` starts at 1. A new attempt (`attempt` and `tries` both +1) comes
-only after the previous one ended or its stop was confirmed. It gets a new
-brief, a new report path, and a new worktree: Claude subagents get one
-automatically; for the others, remove the old worktree and branch first,
-after landing or noting anything useful in them, and `parallel.sh worktree`
-makes the new one at the new base. When the old attempt's commits are worth
-keeping (a fix attempt after a failed verdict, a delivery cut off by its
-time box), keep them first with `git update-ref refs/dflow/<slug>/<id>-<old
-attempt> <its head>` (a ref, no branch or worktree), and make the new
-brief's 准备 apply them after the switch to base: `git cherry-pick <old
-base>..<that ref>`, spelled with literal SHAs; conflicts are the worker's
-to resolve inside its paths. Write what the old attempt found into
-the new brief's 上下文. Close deletes these refs (`git update-ref -d`)
-once their line landed or died. Never resume an old worker to give it new scope.
-
-**Stop protocol:** stop with the carrier's own command (**Carriers**). Only
-after it is confirmed, start the next attempt. When the stop cannot be
-confirmed (no `ps` to check the process identity counts as unconfirmed),
-set `state=stop-unconfirmed` and log a `blocked` row:
-- its worktree and branch are not reused or removed (`parallel.sh cleanup`
-  keeps them);
-- its resource locks are not taken over (`lines.sh lock` refuses while its
-  holder process lives);
-- a receipt that arrives later goes to reconciliation only: it is never
-  verified or landed on its own;
-- the line gets no new attempt until the stop is confirmed (the process is
-  gone, or the user says the window is closed).
-
-A stop line at the top of `standing.md` controls later dispatches only. To
-make a running line write nothing more, use the stop protocol. When an
-outside service fails, stop dispatching the lines that need it and let the
-running ones finish or stop.
-
-**Stuck or dead.** The deadline comes from the manifest or the frame;
-`progress_at` is the last time you saw progress (a new commit on its branch,
-the receipt, a headless output file that grew). A line is stuck only when
-it is past its brief's time box with no progress since. Never resume an
-agent to check on it; read its branch, its output file, its report.
-
-**Retry by failure mode:** usage cap or out of memory, a smaller scope;
-network drop, the same brief again; tool error, another model; unknown, one
-retry. Two failed retries: mark the line `dead` and replan around it.
-
-## Shared resources
-
-A resource two lines cannot use at once (a GUI app window, a device, an
-outside account) gets a machine-wide lock, shared across repos and
-worktrees:
-`${DFLOW_LOCK_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/dflow/locks}/<resource>/`.
-Name each resource in `standing.md`; the brief's 资源 field gives the
-absolute path of `lines.sh`, the lock directory resolved to an absolute
-path, and the lock name.
-
-A use that fits in one shell command takes, uses, and releases the lock in
-that command, so the holder is a process that ends with the use. `lock acquire` prints a token on
-success; `lock release` frees the lock only for that token, so a release
-can never free a lock someone else holds:
-
-```text
-export DFLOW_LOCK_DIR=<锁目录绝对路径>; L=<lines.sh 的绝对路径>; tok=$($L lock acquire <资源> <slug>/<id>/<attempt> $$) || exit 1; <用这项资源的命令>; rc=$?; $L lock release <资源> "$tok"; exit $rc
-```
-
-The command's exit code is the resource command's. Refused (exit 1): the
-resource step did not run and nothing is released; say so in the receipt.
-The resource command must not leave a process behind that keeps using the
-resource after the shell exits: a program that would stay open across
-commands is closed inside the same command.
-
-A use that spans several tool calls (a Godot or browser check driven
-through MCP) holds the lock from its first call to its last: a headless
-line passes `$DFLOW_HOLDER_PID` (its agent process, set by `agent.sh`)
-instead of `$$`, acquires before the first call, releases with the token
-after closing the app, and writes the token into its receipt notes. A
-subagent or visible line has no such pid: it uses only the one-command form,
-or the resource goes to one headless line that drives it for every line in
-turn. A resource that cannot be isolated is driven by one line at a time,
-never two. A lock is taken over only when
-its holder process is gone. The ledger's write lock
-(`.dflow/<slug>/.lock`) is separate and belongs to `lines.sh`.
-
-## Verification
-
-- Scale verification to the line. When its check is one cheap command, the
-  brief names it (`验证     单命令验证：<命令>`), the worker runs it and
-  reports the output, and you spot-check the receipt: no verifier line.
-  Expensive, judgment-laden (animation, game feel, a design read from code)
-  or wide-impact work gets a verifier line; a verifier line whose whole
-  product would be rerunning one command is ceremony.
-- A verifier line runs on the other model family
-  than the verified line's `model` column (claude → codex, codex → claude),
-  in a fresh session. Its report goes through the acceptance items the
-  line's brief names (its 验收 lines, with their manifest numbers) one by
-  one, each with its evidence or "未验证"; a pass that leaves one of those
-  unchecked is recorded as `blocked`, not `pass`. Items owned by other lines
-  are not its business: the whole manifest is checked once, on the real
-  HEAD, at **Close**. Name that model explicitly (`agent.sh start … <model>`,
-  or the matching visible command); never rely on the default, which is
-  picked against the main session's host, not against the worker.
-- A verifier line is a line of its own: id `v-<id>`, a row in the table
-  with `paths=-` (writes nothing; overlap and scope treat it so) and
-  `base=<the SHA it verifies>`, then `parallel.sh
-  worktree <slug> v-<id>` and its printed branch in `branch`, so cleanup
-  does not take it for an orphan. Its brief is read-only: it runs the
-  behavior or the tests in that worktree, writes nothing in the repo, and
-  delivers its report path. The `v-` prefix sets verifier lines apart on
-  the board; the reply lists them on their own line.
-- Record each verdict: `lines.sh ledger record <slug> <id> <attempt> <sha>
-  <pass|fail|blocked> <behavior|test|review|self> <verifier> <evidence>`,
-  where `<id> <attempt> <sha>` are the verified line's. The SHA must name
-  exactly one commit; the ledger keeps the full SHA, and a short one that
-  does not resolve, or resolves to several, is refused.
-- At one SHA, any `fail` that is not `self` decides: a later pass of any
-  kind never turns it back (a new SHA does). With no such fail, the last row
-  that is not `self` (behavior, test, review) decides. A `review` row
-  (reading only) can fail a SHA but its pass is ignored. Only
-  when there is no such row does a `self` pass count, and only when the
-  line's brief (its `brief` column, or `.dflow/<slug>/briefs/<id>-<attempt>.md`)
-  has its own line `验证     单命令验证：<命令>` (a mention elsewhere, or
-  "禁止单命令验证", does not count) and the evidence starts with
-  `single-command:`. A self
-  row added after a verifier's fail never turns it into a pass.
-- Verification failed: never re-verify the same SHA as it is. Dispatch a fix
-  line (a new attempt of the same line, the failure in its brief); its new
-  SHA needs its own pass.
-- `blocked` is not a pass; verify again when the cause is gone.
-
-## Landing (by SHA)
-
-One line at a time, in dependency order:
-
-1. Fix the SHA from the receipt.
-2. `parallel.sh scope <slug> <id> <sha>` and `lines.sh ledger check <slug>
-   <id> <sha>` to see where it stands (`NOT-PASSED` means verify first).
-3. `land` runs both checks itself, plus the receipt of the current
-   attempt, and refuses when any fails, so a skipped step 2 cannot land
-   unchecked work.
-4. `parallel.sh land <slug> <id> <sha>`: lands `base..<sha>` uncommitted
-   in the main tree. It refuses when the line's branch head is no longer
-   that SHA: the branch changed after verification. Log it; the branch's
-   new head is a new delivery that needs its own pass (a new attempt when
-   the worker kept writing after its receipt).
-5. Run the line's checks, every finished stage's conditions, and the
-   protected checks in the main tree, without leaving files behind
-   (`PYTHONDONTWRITEBYTECODE=1` for Python, output directories outside the
-   repo): an untracked file in the main tree makes the next `land` refuse.
-   An untracked file these checks did produce: list it, then delete it.
-   One they did not produce goes to the user first, per **Ask first** in
-   `SKILL.md`.
-6. Pass: `git add` only the line's paths, commit once, `parallel.sh landed
-   <slug> <id>` (closes the land record, so a later unland cannot reach
-   back into it), `lines.sh line set
-   <slug> <id> state=landed landed=<new sha>`.
-7. Log a row whose evidence is `commit <new sha> from <sha>` (the
-   `commit <sha>` form is what `run-state.sh check` reads, so an unattended
-   round does not flag the landing as unlogged). This row and the ledger's
-   pass at `<sha>` together count the line toward the done condition.
-8. `land` itself refused or hit a conflict: nothing landed, so never
-   unland (the tree may hold the user's changes); fix the cause. One
-   exception: `could not record <marker>` means the code did land but
-   unland cannot undo it; do not land again, check the files it lists
-   against the source SHA, and restore them by hand. A failure
-   from step 5 on: `parallel.sh unland <slug> <id>` (it undoes only the
-   files that land recorded, and refuses once the land is committed), then
-   a fix line as in **Verification**.
-
-## When to collect
-
-Attended: at the end of a critical section (writing a brief, a landing, a
-gate), when a completion notice arrives, and before every report to the
-user. A notice that arrives mid-section waits for the section to end.
-Begin by reading receipts; end with `lines.sh status <slug>` and its three
-lines (counts, changed, gates open). Detail lives in
-`.dflow/<slug>/status.md`: per line its state, attempt, last progress,
-receipt, and verdict, the open gates, and the latest `decision` rows you
-copied from reports. Blockers and the workers' own calls reach the board
-only through those rows. To look without writing anything (进展, or any
-read from outside the run), use `lines.sh status <slug> --print` and
-`agent.sh peek <slug> <id> <attempt>`: no file, no snapshot, no lock, no
-signal. `running (identity unverified)` from `peek` or `wait` means the
-process is alive but cannot be proven to be this attempt (no `ps`, or its
-record lacks the identity): treat it as running, never as ended, and never
-stop or restart it; when it lasts past the time box, mark the line
-`stop-unconfirmed` and ask the user. The board's 验收 column is the
-effective verdict (what `ledger check` decides); "原始最新" is only the last
-raw ledger row.
-
 ## Rounds (as the way 无人值守 runs)
 
 An unattended run that works in lines keeps the manifest, lease, log, and
-loop of `playbooks/unattended.md`; there is no second loop. Each Round,
-after `run-state.sh check`: collect (`agent.sh wait` for each headless
-line, `lines.sh receipt` for the rest), update `progress_at` and spot stuck
-lines, `lines.sh lock show` each standing resource, verify and land what is
-ready, refill the window, `lines.sh status <slug>`. A landing commit is
-that Round's progress row. Pause, Pickup, and Close of such a run have
-their 多线 branches in `playbooks/unattended.md`.
-
-## Recovery (after compaction or a restart)
-
-1. Reread the manifest, `standing.md`, the unit table, `ledger.tsv`, and
-   every report not yet reflected in the table or the ledger.
-2. Reattach each line by its branch and attempt. Headless: `agent.sh peek`
-   (it checks the process identity and sends no signal; `wait` could stop
-   a worker past its limit). Claude subagents die with their
-   session: an attempt without a receipt is ended; dispatch a new one.
-   Codex subagents and visible windows may still be alive: check before
-   starting another attempt.
-3. A branch with commits is never done because of them. Only a receipt
-   delivers.
-4. `lines.sh status <slug>`, then go on from **Collect**.
-
-**Gates** (a product or preference call only the user can make): write a
-`gate` row in the decision log (`$S/scripts/log.sh`); the board lists the
-open ones. Close it with another `gate` row with the same decision text and
-`closed` as its result. Route other work around it.
+loop of `playbooks/unattended.md`; there is no second loop. Its Round,
+Pause, Pickup, and Close are the 多线 branches there.
 
 **Reply** (at checkpoints and at close; numbers from the table and ledger,
 not memory):
 
 ```text
 **多线**：<完成条件> 已达 <n>/<N>（账本的来源提交 pass + 日志的来源→落地映射）
-- <线>（<载体>/<模型>，第 <k> 次）：<进行中 / 已交付 / 已验收 / 已落地 <提交> / 放弃：原因 / 停止未确认>；回执 <done / partial / blocked / 无>；验收 <pass@<提交> / fail / 未验>
+- 目标：<用户的目标，一句话>
+- <线>（<载体>/<模型>，第 <k> 次）：<进行中 / 已交付 / 已验收 / 已落地 <提交> / 放弃：原因 / 停止未确认>；验收 <pass@<提交> / fail / 未验>
 - 验收线：<v-<线>（<模型>，第 <k> 次）：进行中 / 已交付 / 停止未确认；没有就省略>
 - 放弃的线：<线 → 原因；没有就省略>
 - 等你定：<问题 → 默认 → 怎么改；没有就写"无">
 - 影响面：<见 SKILL.md>
-- 账本：.dflow/<slug>/（看板 status.md，验收 ledger.tsv）；单元表 .dflow/<slug>.units.tsv；日志 .dflow/<slug>.tsv
+- 记录：.dflow/<slug>/（账本 ledger.tsv）；日志 .dflow/<slug>.tsv
 ```

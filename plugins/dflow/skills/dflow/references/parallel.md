@@ -145,6 +145,6 @@ so there is no default-branch catch-up; Codex facts are in
 For each `dispatched` unit: its branch has commits past `base` but no final
 report → not delivered: read the worker's transcript for its report; none,
 then send it back (step 3.5), keeping its commits as in **Attempts and
-stopping** of `playbooks/lines.md` (a `refs/dflow/` ref, then a cherry-pick
+stopping** of `references/lines-mechanics.md` (a `refs/dflow/` ref, then a cherry-pick
 in the new brief's 准备); no branch or no commits → dispatch again; a worktree
 with uncommitted changes → keep it, list the files, never delete.

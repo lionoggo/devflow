@@ -32,11 +32,12 @@ dflow 线 <slug>/<id>/<attempt>
          （只有一条命令就能判对错时，这一栏整行写成：验证     单命令验证：<命令>；
          只有这样单独一行才授权自报，别处提到不算）
 时限     约 <n> 分钟；到时交回已有结果
-禁止     push、rebase、merge、reset（准备那一步除外）、stash、改其他分支、改范围外文件、改受保护路径
+禁止     push、rebase、merge、reset（准备那一步除外）、stash、改其他分支、改范围外文件、改受保护路径、
+         跳过提交钩子（--no-verify、-c core.hooksPath=…）
 报告     状态、分支、HEAD、实际跑过的命令和输出、偏差、建议的后续；
          决策行：本单元里的分叉、换思路、放弃的做法，每行六列
          （ts phase decision why evidence result），证据指向提交或 path:line
-常驻     <.dflow/<slug>/standing.md 原文，整段粘贴>
+常驻     <.dflow/<slug>/standing.md 原文，整段粘贴；standing.md 为空时删去这一行>
 资源     （只在要用共享资源时写）锁名 <资源>；能用一条命令做完时，在这条命令里取锁、使用、释放：
          export DFLOW_LOCK_DIR=<锁目录绝对路径>; L=<lines.sh 的绝对路径>; tok=$($L lock acquire <资源> <slug>/<id>/<attempt> $$) || exit 1; <用这项资源的命令>; rc=$?; $L lock release <资源> "$tok"; exit $rc
          拿不到锁就不做这一步，在回执里写明；用完的程序在这条命令里关掉
