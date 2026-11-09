@@ -20,7 +20,14 @@ pstack `correct`, `reflect`, and `authoring-a-skill`. Principles: 结构化教�
    4. Written rules, last, only for judgment calls.
 3. Prove the new check fails on a reproduction of the real past mistake, then
    passes on the corrected state. Keep both outputs.
-4. Editing a skill: keep only text that changes a decision; delegate to other
+4. Editing a skill: edit its source, never a copy under a plugin cache
+   (`~/.codex/plugins/cache/`, `~/.claude/plugins/cache/`; in Codex the
+   skill's own directory is such a copy). dflow's source is the devflow
+   repo's `plugins/dflow/`; after a change there, say that Codex needs
+   `codex plugin add dflow@devflow`. Another plugin's skill: copy it to a
+   project or user skill folder (the **Project skills** row of
+   `references/hosts.md`, or `~/.claude/skills/`) and edit the copy (from pstack
+   `reflect`). Keep only text that changes a decision; delegate to other
    files by path instead of restating; check that the frontmatter has `name`
    and `description` and every referenced path exists. When the skill has a
    test script, run it.

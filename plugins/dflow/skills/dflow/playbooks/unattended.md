@@ -158,8 +158,9 @@ round's progress; a round with none logs `round` with what it waits on.
      files you created this round; log `round` with why and the next idea. A
      path in `git status` you did not touch: leave it, log `blocked`, notify,
      stop.
-6. Side findings: a tool failure or related bug inside `allow` gets its own
-   commit and a `side` row; trouble inside a protected path (a flaky check)
+6. Side findings: a tool failure or related bug inside `allow` that the goal
+   needs fixed gets its own commit and a `side` row (one the goal does not
+   need is a follow-up); trouble inside a protected path (a flaky check)
    is not fixed, the unit is gated; anything outside scope goes to the
    closeout's follow-ups.
 7. Long waits (builds, benchmarks): background Bash or Monitor to wake you,
@@ -286,14 +287,18 @@ is released only at step 10.
    claimed without a run (in the log or in what the agent said), approvals the
    main session credits to the user with no matching user line, choices risky
    in hindsight, what a quick read would miss, and the two requirement
-   questions in `SKILL.md` **Cross-model review**. Pass the user's
+   questions in `SKILL.md` **Cross-model review**, each finding with its
+   proof (**Findings need proof** there). Pass the user's
    constraints on verbatim. From Codex: write the prompt to a file, then
    `$S/scripts/review.sh start <prompt> <out>` and `review.sh wait <out>`
    until `ended` (a review takes minutes; a 60-second foreground call only
    yields 未审查). Unavailable, `ended lost`, or `ended timeout`:
    "未审查：<原因>"; go to step 9.
-7. Fix once: check each finding against the code; fix the ones that hold and
-   need no new authority in one batch, with the failure path the finding
+7. Fix once: rerun or read each finding's proof; fix the shown, blocking
+   ones (`SKILL.md` **Findings need proof**) that need no new authority in
+   one batch, and list the rest as follow-ups or 未证实 in the reply; a
+   shown mismatch in the log or an approval gets its `correction` row now,
+   blocking or not, with the failure path the finding
    names checked, not only the old tests. Skip the batch when the deadline
    leaves no time for its checks and step 8. Log each fix as `side`, then
    redo steps 2–5, with a new timeline, so the cross-check sees the fixes
@@ -311,9 +316,19 @@ is released only at step 10.
    (close, release). What it finds goes to the user; log a
    `correction` row for each row it shows wrong or broader than its
    evidence. Unavailable: the range `<review head>..HEAD` is 未审查.
+   When those commits (in a no-commit run, the changes since the reviewed
+   state) change only wording whose meaning is unchanged (no code, test,
+   check, skill or rule text, and no change to a behavior, contract,
+   acceptance item, permission, or claim about what ran or passed), skip the
+   reviewer: reread each changed line against the code yourself and log a
+   `side` row naming the range and why (from pstack: a wording-only change
+   gets no verifier). The first review still covers only its own head or
+   state.
 9. Log `close`; the decision column is exactly 完成, 部分完成, or 受阻,
    judged by the conditions after the corrections, not by a clean review: a
-   condition that a remaining finding disproves has not passed.
+   condition that a remaining shown finding disproves has not passed. A
+   reviewer finding that is 未证实 decides nothing, but dropping it never
+   supplies evidence a condition lacked at step 4.
 10. Stop the loop (Codex: `update_goal` `complete`, or `blocked` when 受阻;
    `complete` ends the goal's objective, running rounds until Close, not
    the product goal: a 部分完成 stays 部分完成 in the row and the reply),
@@ -363,6 +378,7 @@ holds, with these replacements:
 
 ```text
 **结果**：<完成 / 部分完成 / 受阻>。<一句话>
+- 目标：<用户的目标与要解决的问题，一句话>
 - 完成条件：<每条 → 最终真实输出>
 - 提交：<基线..HEAD，n 个；按默认做的单独列出>
 - 按默认做的决定：<问题 → 默认值 → 怎么改（git revert <sha>）>

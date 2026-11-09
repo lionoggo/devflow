@@ -216,21 +216,41 @@ docs they cite, and two more questions: which requirements are missing or
 only half done (decisions the log already records are not news), and which
 tests claim an acceptance item their assertions do not prove
 (`principles/test-behavior.md`). A diff alone only shows bugs, not what is
-missing.
+missing. A model name the reviewer's CLI rejects (`-m`): run once more on
+its default model and say so; only when that fails too is it 未审查.
+
+**Findings need proof** (from pstack `interrogate`). Every review prompt asks,
+for each finding, how to see it: a command with the output it printed (or
+expects, when its sandbox cannot run it) and the output the intent requires;
+for a missing requirement, the requirement line and where the code lacks it;
+for a design, the code line or a probe command. An expected output is never
+reported as a printed one. Leave out what it did not check; no findings is a
+valid result. Before acting on a command, rerun it yourself when this
+playbook may run commands (its outputs in the scratch directory, which is
+inside `.dflow/tmp/` and kept out of Git); 复盘 checks it against the
+recorded run instead and never reruns. A finding is shown when your rerun
+prints the failure or the cited line says what it claims; the rest are
+未证实, listed with why. Merge findings with one root cause. A shown finding
+blocks only when the failure breaks the user's goal and it is a failing run
+at the current head, a doc line this change made wrong, or an acceptance
+item not met; a problem the base already had blocks only when the change
+copies it, newly reaches it, or the acceptance asks for it fixed. Everything
+else is a follow-up. A shown mismatch in the log, an approval, or a run
+record gets a `correction` row whether or not it blocks.
 
 ## Principles
 
 | Principle | When | Rule | File |
 |---|---|---|---|
 | 不停下等人 | Tempted to ask "should I do X" and X is reversible | Do it, then say why and how to undo | `principles/never-block.md` |
-| 对齐目标 | Every reply, above all after a long discussion | Restate the goal before concluding; say so when drifting | `principles/align-goal.md` |
+| 对齐目标 | Every reply, above all after a long discussion | Restate the goal before concluding, in every brief to another agent, and atop long-task replies; say so when drifting | `principles/align-goal.md` |
 | 真实证据 | Before saying done | Prove it on the real artifact; unrun means "未验证" | `principles/prove-it-works.md` |
 | 找根因 | Debugging | Reproduce, then ask why until the root; on a second failure, question the premise | `principles/root-cause.md` |
 | 通用解 | Fixing or designing | Say whether it holds for other inputs; no special-casing one instance | `principles/general-fix.md` |
 | 先减后加 | Plans, reviews, skill design | Delete and reuse first; justify every new mechanism | `principles/subtract-first.md` |
 | 测行为 | Writing or keeping a test | Assert what users observe; a test that passes with the behavior broken, or fails when only internals change, goes | `principles/test-behavior.md` |
 | 小步可验证 | Multi-step work | Each unit ends in a check; go on only when it passes | `principles/verifiable-units.md` |
-| 解释数字 | Reporting a measured or performance number (a plain count only needs its source and scope checked) | Name what limits it and rule out what else it could measure | `principles/explain-number.md` |
+| 解释数字 | Before measuring, and reporting a measured or performance number (a plain count only needs its source and scope checked) | Write the result that would change the decision first; name what limits it and rule out what else it could measure | `principles/explain-number.md` |
 | 以现状为准 | Citing docs or old plans | Check against current code; ask for missing evidence, never invent it | `principles/current-state.md` |
 | 结构化教训 | The same correction a second time | Prefer a check, script, or structure over more text | `principles/encode-lessons.md` |
 

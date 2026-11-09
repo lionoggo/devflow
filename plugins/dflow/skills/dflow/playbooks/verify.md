@@ -36,13 +36,18 @@ Principles: 真实证据, 对齐目标, 不停下等人.
    configuration). Something only a human can judge (look and feel, a real
    external account) becomes a short checklist for the user, not a claim.
 6. Classify each failure: product defect, harness, environment, or baseline
-   (failing before the change).
+   (failing before the change). A baseline failure outside the criteria
+   fails the candidate only when the change copies it or newly reaches it;
+   otherwise report it as a follow-up. A required criterion that fails is a
+   failure whether or not the base already failed it.
 7. A standalone 验收 reports and changes nothing: each confirmed defect with
    its evidence goes back to whoever writes the code (from pstack: the
    verifier is never a second writer). Repair only when this session built
    the candidate and reached here from 实施, or the user said "验收并修":
-   smallest fix, rerun the affected evidence and nearby regressions, commit
-   locally; harness problems only in maintained test code. Stop after three
+   smallest fix, rerun the affected evidence and nearby regressions (a
+   wording-only fix whose meaning is unchanged, per `playbooks/unattended.md`
+   Close step 8, needs only a reread of the changed lines; say so in the
+   reply with the commit), commit locally; harness problems only in maintained test code. Stop after three
    rounds on the same defect, or when a repair needs an architecture or
    public-contract change, and report.
 8. For several criteria or an inherited plan, keep the matrix in
@@ -55,6 +60,7 @@ or clean to get a baseline.
 
 ```text
 **验收结论**：<通过 / 未通过 / 部分通过 / 无法完成验收>。<一句话>
+- 目标：<用户的目标与要解决的问题，一句话>
 - 候选：<HEAD 提交号或 diff 范围>
 - 标准与证据：<每条：标准 → 怎么查的（层级）→ 结果；推导出的标准注明>
 - 问题与修复：<确认的缺陷及证据；修了才写修复提交>

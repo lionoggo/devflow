@@ -2,8 +2,12 @@
 
 Before you trust, report, or act on a measured or performance number (a
 plain count, such as commits or files, only needs its source and scope
-checked):
+checked), and before you run the measurement:
 
+- Write the decision first: the result that would change what you do, and
+  the noise floor. When the run-to-run spread is larger than the effect,
+  stop and lower the noise (fewer parallel jobs, more runs) before reading
+  the number. From pstack 0.15.35.
 - Name what bounds it (a core, a lock, the disk, the network, the load
   generator), from a profile or counters, not from reading code. If you cannot
   say why it is not twice as good, you do not know what you measured.

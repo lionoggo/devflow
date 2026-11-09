@@ -11,8 +11,10 @@ Review to reduce real risk, not as a ritual. It tries to disprove readiness.
   prompt; otherwise drop that line. Tell it this is a non-interactive run that
   must finish its whole analysis in one reply.
 - Also run the readiness questions in `plan-shape.md` yourself.
-- The planner stays the owner: check each finding against current evidence,
-  then adopt, defer, or reject it with the reason. At most two rounds; product,
+- The planner stays the owner: check each finding's proof (`SKILL.md`
+  **Findings need proof**: a code or doc line, or a probe you rerun), then
+  adopt, defer, or reject it with the reason; one without proof is 未证实,
+  not a reason to change the plan. At most two rounds; product,
   architecture, security, or public-contract disagreements go to the user.
 - The other model unavailable or failing: report "未审查：<原因>". No
   self-review by this host's model in its place.
@@ -31,6 +33,8 @@ testability · user experience · what could be deleted.
 需求对照：方案依据 <需求文档路径>。逐条列出方案引用范围内、在验收里没有对应的需求条目（包括一条需求里被漏掉的子项），只有用户确认过的排除项除外；方案自行写"不做"的需求照样列出，标为范围偏差。
 
 尝试证伪"方案可以执行"：没有依据的假设或收益、更简单的可行做法、没有证据链的结果、没有真实负责方或契约的边界、一条路径还没跑通就先泛化、比承诺弱的验收、只对个例成立的修法，以及相关的兼容、安全、并发风险。把作者的推荐当作假设。不因文风否决。证据缺失时直说。
+
+每条问题附证据：代码或文档的路径与行号，或一条可运行的探针命令及其输出；给不出证据的不要报。
 
 用简体中文返回：P0/P1/P2 问题（问题、证据、后果、改法），每级最多 5 条，其余列入"未采纳的次要意见"；无依据的说法；漏掉的更简单方案；剩余风险；结论：可以执行 / 修改后执行 / 不可执行。
 ```
