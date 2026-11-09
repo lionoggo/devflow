@@ -2,15 +2,17 @@
 # Headless worker for dflow 多线 (playbooks/lines.md): the other model, with full permissions, in the
 # line's worktree, in its own session so it outlives the call that starts it (lifecycle: proc.sh).
 # Usage:
-#   agent.sh start <slug> <id> <attempt> <brief-file> <worktree> [claude|codex] [limit-seconds]
+#   agent.sh start <slug> <id> <attempt> <brief-file> <worktree> [claude|codex[:<model>]] [limit-seconds]
 #                 brief on stdin; its first line must be "dflow 线 <slug>/<id>/<attempt>" for these
 #                 arguments. The attempt is claimed first with mkdir .dflow/<slug>/run/<id>-<attempt>.claim:
 #                 an attempt claimed before (or started at the same moment by another call) is refused
 #                 and nothing of it is overwritten; start <attempt>+1. Output to
 #                 <repo>/.dflow/<slug>/run/<id>-<attempt>.out, one file per attempt; prints the pid.
 #                 Claude: `claude -p --dangerously-skip-permissions`; Codex:
-#                 `codex exec --dangerously-bypass-approvals-and-sandbox -C <worktree> -`. Without a
-#                 model, the other host's: Claude from Codex, else Codex. The command also gets
+#                 `codex exec --dangerously-bypass-approvals-and-sandbox -C <worktree> -`; `:<model>` adds
+#                 `--model <model>` (Claude) or `-m <model>` (Codex); without it the CLI's own default model
+#                 runs (for Claude, settings.json "model"). Without a family, the other host's: Claude
+#                 from Codex, else Codex. The command also gets
 #                 DFLOW_LINE=<slug>/<id>/<attempt>, DFLOW_RECEIPT=<absolute receipt path> and
 #                 DFLOW_HOLDER_PID=<the run's session leader pid> (the holder pid for lines.sh lock).
 #                 limit-seconds (default 7200; give the model to set it): the run's own deadline,
@@ -32,6 +34,9 @@
 #                 prints them
 #   agent.sh peek <slug> <id> <attempt>
 #                 the same answers as wait, from one look: never waits, never signals, no limit
+#                 wait, peek and stop look in the repo of the current directory: an attempt with no claim,
+#                 output or pid there is exit 1 "no such attempt <slug>/<id>/<attempt> in <repo>" (run it
+#                 from the repo that started it), never "ended lost" or a confirmed stop
 #   agent.sh stop <slug> <id> <attempt>
 #                 proc_stop: "ok stopped" / "ok not running", or exit 1 "not stopped: <reason>" (the
 #                 identity check failed or could not be made, or the group is still there or cannot be
@@ -57,10 +62,15 @@ start)
     [ -d "$wt" ] || die "no worktree $wt"
     wt=$(cd "$wt" && pwd -P); brief=$(proc_canon "$brief")
     [ -n "$model" ] || { [ "$(proc_host)" = codex ] && model=claude || model=codex; }
-    if [ -n "${DFLOW_AGENT_CMD:-}" ]; then set -- sh -c "$DFLOW_AGENT_CMD"
-    else case $model in
-        claude) set -- claude -p --dangerously-skip-permissions ;;
-        codex) set -- codex exec --dangerously-bypass-approvals-and-sandbox -C "$wt" - ;;
+    fam=${model%%:*}; slug_m=""; case $model in *:*) slug_m=${model#*:} ;; esac
+    case $model in *:) usage ;; esac
+    [ -z "$slug_m" ] || printf '%s' "$slug_m" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$' || die "bad model: $slug_m"
+    if [ -n "${DFLOW_AGENT_CMD:-}" ]; then
+        case $fam in claude|codex) ;; *) usage ;; esac
+        export DFLOW_MODEL="$slug_m"; set -- sh -c "$DFLOW_AGENT_CMD"
+    else case $fam in
+        claude) set -- claude -p --dangerously-skip-permissions ${slug_m:+--model "$slug_m"} ;;
+        codex) set -- codex exec --dangerously-bypass-approvals-and-sandbox ${slug_m:+-m "$slug_m"} -C "$wt" - ;;
         *) usage ;;
     esac; fi
     first=$(head -1 "$brief" | tr -d '\r')
@@ -72,7 +82,12 @@ start)
     fi
     export DFLOW_LINE="$slug/$uid/$att" DFLOW_RECEIPT="$root/.dflow/$slug/reports/$uid-$att.md"
     cd "$wt" || exit 1
-    DFLOW_PROC_LIMIT=$limit proc_start "$out" "$@" < "$brief" ;;
+    DFLOW_PROC_LIMIT=$limit proc_start "$out" "$@" < "$brief"; exit $? ;;
+wait|peek|stop)
+    [ -e "$out" ] || [ -e "$out.pid" ] || [ -d "${out%.out}.claim" ] || { echo "no such attempt $slug/$uid/$att in $root"; exit 1; }
+    ;;
+esac
+case $cmd in
 wait|peek)
     if [ "$cmd" = wait ]; then st=$(proc_wait "$out" "${5:-50}" "${6:-3600}"); rc=$?
     else st=$(proc_peek "$out"); rc=$?; fi

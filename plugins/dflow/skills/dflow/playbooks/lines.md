@@ -60,7 +60,7 @@ subagent gets its worktree from `$S/scripts/parallel.sh worktree <slug>
 |---|---|---|---|
 | subagent, Claude host | Agent with `isolation: "worktree"`, `run_in_background: true`, the brief as prompt; take the branch from the report | it wakes you and the receipt is valid | TaskStop with its id; confirmed when the tool says it stopped |
 | subagent, Codex host | `parallel.sh worktree`, then `spawn_agent` (`fork_context: false`) with the brief, its 准备 the working-directory form (`references/unit-brief.md`) | `wait_agent` returns it and the receipt is valid | `close_agent`; confirmed when it returns |
-| headless, either host | `parallel.sh worktree`, then `$S/scripts/agent.sh start <slug> <id> <attempt> <brief> <worktree> <claude\|codex> <limit>`, `<limit>` twice the brief's time box in seconds (default 7200; the run keeps that deadline itself); record the pid it prints in `agent` | `agent.sh wait <slug> <id> <attempt> 50 <limit>` prints `delivered <state> <sha\|path>` (same `<limit>`; `running (timeout, not stopped)` is 停止未确认) | `agent.sh stop <slug> <id> <attempt>`; exit 0 is confirmed, `not stopped: …` is not |
+| headless, either host | `parallel.sh worktree`, then `$S/scripts/agent.sh start <slug> <id> <attempt> <brief> <worktree> <claude\|codex>:<model> <limit>`, the model named (without it the CLI default runs; Claude's was Sonnet in the 2026-11-09 pilot, refused twice), `<limit>` twice the brief's time box in seconds (default 7200; the run keeps that deadline itself); record the pid it prints in `agent` | `agent.sh wait <slug> <id> <attempt> 50 <limit>` prints `delivered <state> <sha\|path>` (same `<limit>`; `running (timeout, not stopped)` is 停止未确认) | `agent.sh stop <slug> <id> <attempt>`; exit 0 is confirmed, `not stopped: …` is not |
 | visible, either host | `parallel.sh worktree`, then `orca agent launch --agent <claude\|codex> --worktree path:<wt> --prompt "<brief text>" --surface terminal --json` (record the terminal handle in `agent`); no Orca: `tmux new-window -c <wt> '<cmd> "<brief text>"'`, `<cmd>` being `claude --dangerously-skip-permissions` or `codex --dangerously-bypass-approvals-and-sandbox`; neither: print the command for the user | `lines.sh receipt <slug> <id> <attempt>` exits 0 | send one stop sentence into the window, or ask the user; confirmed only when its agent process is gone or the user says it stopped |
 
 Headless and visible lines run with permissions fully open, like ccy and cxy;
@@ -143,9 +143,10 @@ never press it yourself or edit the trust settings.
    <sha>` (it checks scope, the ledger, and the receipt, and refuses a branch
    that moved), run the line's checks, every finished stage's conditions,
    and the protected checks in the main tree without leaving files behind, then `git add` only the line's paths,
-   commit once, `parallel.sh landed <slug> <id>`, `lines.sh line set <slug>
-   <id> state=landed landed=<new sha>`, and log `commit <new sha> from
-   <sha>`. A failure: `references/lines-mechanics.md` **Landing failures**.
+   commit once, then `parallel.sh landed <slug> <id>`: it sets `state=landed
+   landed=<new sha>` and logs `commit <new sha> from <sha>` (never set these by
+   hand; `lines.sh` refuses `state=landed` without a landed commit). A failure:
+   `references/lines-mechanics.md` **Landing failures**.
 6. **Close.** Collect once more; bring every attempt to an end state
    (landed, dead, stopped, or 停止未确认 with what you did about it). Shared
    files go to one more line after the lines they depend on land. On the

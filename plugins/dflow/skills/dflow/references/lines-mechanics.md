@@ -181,6 +181,9 @@ first); `land` runs both itself, plus the current attempt's receipt.
   after `land` succeeded (the checks above, or the commit): `parallel.sh unland <slug> <id>` (it undoes only the
   files that land recorded, and refuses once the land is committed), then
   a fix attempt as in **Ledger**.
+- `landed` refused after the commit because the table or the log could not
+  be written: the record stays; fix the cause and run `landed` again (it
+  is safe to repeat), never set `state=landed` by hand.
 
 `parallel.sh cleanup <slug>` removes only lines in state `landed`, `done`,
 `dead`, `stopped`, or `planned` (never dispatched); it keeps and lists

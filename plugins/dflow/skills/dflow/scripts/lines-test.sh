@@ -24,6 +24,22 @@ expect 0 "init" "$ln" init demo
 [ "$(head -1 .dflow/demo/ledger.tsv)" = "$(printf 'id\tattempt\tsha\tresult\tevidence_type\tverifier\tevidence\tts')" ] && [ -f .dflow/demo/standing.md ] && ok || bad "ledger header or standing.md"
 grep -qxF .dflow/ "$(git rev-parse --git-path info/exclude)" && ok || bad ".dflow/ not excluded"
 expect 0 "init again is a no-op" "$ln" init demo
+# L3: a row left in state landed needs landed=<a commit in HEAD's history>; refused otherwise, nothing set
+cp .dflow/demo.units.tsv "$t/units"
+expect 1 "landed with no commit" "$ln" line set demo a state=landed
+expect 1 "landed with an empty value" "$ln" line set demo a state=landed landed=
+git commit -q --allow-empty -m side; side=$(git rev-parse HEAD); git reset -q --hard "$base"
+expect 1 "landed with a commit not in HEAD" "$ln" line set demo a state=landed "landed=$side"
+cmp -s .dflow/demo.units.tsv "$t/units" && ok || bad "a refused landed set changed the table"
+expect 0 "landed with HEAD" "$ln" line set demo a state=landed "landed=$base"
+expect 0 "another column on a landed row" "$ln" line set demo a progress_at=now
+expect 1 "clearing landed on a landed row" "$ln" line set demo a landed=-
+cp "$t/units" .dflow/demo.units.tsv
+# L7: a table that cannot be replaced is a failure, not "ok set" (macOS: an immutable file)
+if chflags uchg .dflow/demo.units.tsv 2>/dev/null; then
+    out=$("$ln" line set demo a progress_at=x 2>&1); rc=$?; chflags nouchg .dflow/demo.units.tsv
+    [ $rc = 1 ] && echo "$out" | grep -q "could not replace" && cmp -s .dflow/demo.units.tsv "$t/units" && ok || bad "a failed replace reported: $rc $out"
+fi
 [ "$(head -1 .dflow/demo.units.tsv | tr '\t' '\n' | grep -c attempt)" = 1 ] && ok || bad "init added columns twice"
 # the old table still works for parallel.sh after init
 expect 1 "parallel.sh reads the widened table" "$here/parallel.sh" scope demo a   # branch wa does not exist: refused, not misread

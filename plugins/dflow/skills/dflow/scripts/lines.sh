@@ -16,7 +16,9 @@
 #   lines.sh init <slug>                  create <slug>/ with ledger.tsv and an empty standing.md; add the
 #                                         six columns to the unit table (created if missing), "-" in old rows
 #   lines.sh line set <slug> <id> <col>=<val>...
-#                                         set columns by header name; adds the row when <id> is new
+#                                         set columns by header name; adds the row when <id> is new.
+#                                         A row left in state landed must have landed=<a commit in HEAD's
+#                                         history> (parallel.sh landed sets both); else refused, nothing set
 #   lines.sh receipt <slug> <id> <attempt>
 #                                         print "<state> <sha|path>" of a valid receipt; 1 when missing,
 #                                         malformed, or naming another id or attempt
@@ -334,13 +336,20 @@ line:set)
         has_col "$k" || { rm -f "$a"; die "no column $k in $table (run lines.sh init $slug)"; }
         printf '%s\t%s\n' "$k" "${v:--}" >> "$a"
     done
+    # a row left in state landed must name its landed commit, in HEAD's history
+    st=$(awk -F'\t' '$1 == "state" { v = $2 } END { print v }' "$a"); [ -n "$st" ] || st=$(tcol "$id" state)
+    lv=$(awk -F'\t' '$1 == "landed" { v = $2 } END { print v }' "$a"); [ -n "$lv" ] || lv=$(tcol "$id" landed)
+    if [ "$st" = landed ]; then
+        lf=$(resolve "$lv") && git merge-base --is-ancestor "$lf" HEAD 2>/dev/null ||
+            { rm -f "$a"; die "state=landed needs landed=<the commit it landed as, in HEAD's history>, not ${lv:--}; nothing set (parallel.sh landed sets both)"; }
+    fi
     awk -F'\t' -v OFS='\t' -v id="$id" 'FNR == NR { set[$1] = $2; next }
         FNR == 1 { for (i = 1; i <= NF; i++) h[$i] = i; nf = NF; print; next }
         $h["id"] == id { for (k in set) $h[k] = set[k]; for (i = 1; i <= nf; i++) if ($i == "") $i = "-"; f = 1 }
         { print }
         END { if (!f) { for (i = 1; i <= nf; i++) $i = "-"; $h["id"] = id; for (k in set) $h[k] = set[k]; print; print "added" > "/dev/stderr" } }' \
         "$a" "$table" > "$table.tmp.$$" 2> "$a.err" || { rm -f "$a" "$a.err" "$table.tmp.$$"; die "could not update $table"; }
-    replace "$table.tmp.$$" "$table"
+    replace "$table.tmp.$$" "$table" || { rm -f "$a" "$a.err" "$table.tmp.$$"; die "could not replace $table"; }
     grep -q added "$a.err" && echo "ok added $id" || echo "ok set $id"; rm -f "$a" "$a.err" ;;
 receipt:)
     id=${2:-}; att=${3:-}; [ -n "$id" ] && [ -n "$att" ] || usage

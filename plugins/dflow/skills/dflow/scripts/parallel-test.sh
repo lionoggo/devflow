@@ -56,6 +56,7 @@ out=$("$ps" scope demo b); [ $? = 1 ] && echo "$out" | grep -q "OUTSIDE README.m
 expect 0 "land a" "$ps" land demo a
 [ "$(cat app/a.py)" = A ] && [ -n "$(git diff --cached --name-only)" ] && ok || bad "land a did not stage"
 git add app/a.py && git commit -qm "unit a"
+expect 0 "landed a" "$ps" landed demo a
 # unland: land b then undo it, including the new file
 awk -F'\t' -v OFS='\t' 'NR>1 && $1=="b"{$3="app/b.py README.md"} {print}' .dflow/demo.units.tsv > .dflow/x && mv .dflow/x .dflow/demo.units.tsv
 expect 0 "land b" "$ps" land demo b
@@ -237,6 +238,9 @@ out=$("$ps" landed ld y); [ $? = 1 ] && [ -f "$mk" ] && ok || bad "landed for an
 git commit -qm "land x"
 out=$("$ps" unland ld x); [ $? = 1 ] && echo "$out" | grep -q "landed" && ok || bad "unland after a commit does not point to landed: $out"
 out=$("$ps" landed ld x); [ $? = 0 ] && [ ! -e "$mk" ] && ok || bad "landed after the commit: $out"
+# L1: landed records the land itself: the table's state and landed; with no run log, it writes none
+lx=$(awk -F'\t' '$1 == "x" { print $4, $10 }' .dflow/ld.units.tsv)
+[ "$lx" = "landed $(git rev-parse HEAD)" ] && [ ! -e .dflow/ld.tsv ] && ok || bad "landed did not set the table, or wrote a log: $lx"
 git reset -q --hard "$h0"; rm -f "$mk"
 # U1: unland checks the index too: a later change staged and then reverted in the working tree only
 # (index U, working tree back at the landed L) is refused, and the staged U stays
@@ -274,7 +278,15 @@ ln -sfn core.py app/lnk
 out=$("$ps" unland ld l); rc=$?
 [ $rc = 0 ] && [ ! -e app/lnk ] && [ ! -L app/lnk ] && [ ! -e "$mk" ] && [ -z "$(git status --porcelain --untracked-files=all | grep -v ' \.dflow/' | grep -v ' \.claude/worktrees/')" ] && ok || bad "unland of a symlink: $rc $out"
 "$ps" land ld l >/dev/null; git commit -qm "land l"
+"$here/log.sh" .dflow/ld.tsv start "开始" "测试" "-" ok
+cp "$mk" "$t/mk.l"
 out=$("$ps" landed ld l); [ $? = 0 ] && [ ! -e "$mk" ] && ok || bad "landed of a committed symlink: $out"
+# L5: landed run again over a record left behind (the row was written, the record not removed) writes no second row
+cp "$t/mk.l" "$mk"; "$ps" landed ld l >/dev/null
+[ "$(awk -F'\t' -v e="commit $(git rev-parse HEAD) from $(git rev-parse ld-l)" '$5 == e' .dflow/ld.tsv | wc -l | tr -d ' ')" = 1 ] && [ ! -e "$mk" ] && ok || bad "landed again wrote the row twice: $(cat .dflow/ld.tsv)"
+# L2: with a run log, landed appends "commit <new> from <source>" in the evidence column, as run-state reads it
+[ "$(tail -1 .dflow/ld.tsv | cut -f2,5)" = "$(printf 'commit\tcommit %s from %s' "$(git rev-parse HEAD)" "$(git rev-parse ld-l)")" ] && ok || bad "landed log row: $(tail -1 .dflow/ld.tsv)"
+rm -f .dflow/ld.tsv
 git reset -q --hard "$h0"; rm -f "$mk"
 # U4: landed needs the land's content in the commit: an empty commit, or one of an unrelated file only,
 # is refused with the paths named and the marker kept; the real commit of the land closes it
@@ -287,6 +299,14 @@ out=$("$ps" landed ld x); [ $? = 1 ] && echo "$out" | grep -q "app/ldx.py" && ! 
 git checkout -q app/ldx.py 2>/dev/null; git commit -qm "land x rest" -- app/ldx.py
 out=$("$ps" landed ld x); [ $? = 0 ] && [ ! -e "$mk" ] && ok || bad "landed once the land is committed: $out"
 git reset -q --hard "$h0"; rm -f "$mk" other.txt
+# L4: a commit made after the land's own commit: landed names the land's commit, not HEAD
+cp .dflow/ld.units.tsv "$t/ldunits"
+"$ps" land ld y >/dev/null; git commit -qm "land y"; ly=$(git rev-parse HEAD)
+# L6: a land committed but not closed blocks the next land, whose record would replace it
+out=$("$ps" land ld x); [ $? = 1 ] && echo "$out" | grep -q "parallel.sh landed ld y first" && [ "$(awk -F'\t' '$1 == "uid" { print $2 }' "$mk")" = y ] && [ -z "$(git status --porcelain --untracked-files=no)" ] && ok || bad "land over an open record: $out"
+echo later > later.txt; git add later.txt; git commit -qm later
+out=$("$ps" landed ld y); [ $? = 0 ] && [ "$(awk -F'\t' '$1 == "y" { print $4, $10 }' .dflow/ld.units.tsv)" = "landed $ly" ] && ok || bad "landed named HEAD, not the land's commit: $out; $(awk -F'\t' '$1 == "y"' .dflow/ld.units.tsv)"
+git reset -q --hard "$h0"; rm -f "$mk" later.txt; cp "$t/ldunits" .dflow/ld.units.tsv
 # T3: the marker cannot be written (a directory in its place, or a read-only .dflow): land fails, says
 # what to undo by hand, and records no .landed row
 mkdir "$mk"; cp .dflow/ld.landed "$t/ldrec" 2>/dev/null || : > "$t/ldrec"

@@ -5,7 +5,8 @@
 # (多线 appends carrier model attempt brief report progress_at; columns are read by header name).
 # paths: space-separated globs the unit may write ("*" crosses "/"); "-" alone: it writes nothing
 # (a read-only line, such as a verifier), so it takes no part in overlap and scope requires no change.
-# Only the coordinating session writes the table; this script only reads it.
+# Only the coordinating session writes the table; this script only reads it, except `landed`, which sets
+# state and landed through lines.sh.
 #
 # Usage: parallel.sh <command> <slug> [id] [sha]
 #   prepare  <slug>       exclude .claude/worktrees/ and .dflow/; require a clean tree; create the table
@@ -45,7 +46,13 @@
 #                         unit's, HEAD is no longer the one it records, and every listed file is in HEAD as it
 #                         landed (A/M/T: `git ls-tree HEAD` gives the recorded mode and blob; D: not in HEAD) with no change of it
 #                         left in the index or working tree; else refused, the paths that differ listed, the
-#                         record kept
+#                         record kept. The land's commit is the first commit after the recorded HEAD (first
+#                         parent) that holds all of the land. On closing it sets the unit's state=landed
+#                         landed=<that commit> (lines.sh line set) and, when the run log .dflow/<slug>.tsv
+#                         exists, appends a "commit" row whose evidence is "commit <it> from <source sha>";
+#                         either failing keeps the record, and running landed again is safe (the row is
+#                         not written twice). land refuses while a record is open: at the same HEAD, commit
+#                         or unland it; after a commit, close it with landed
 #   unland   <slug> <id>  undo an uncommitted land: only with a .landing of this unit at the current HEAD
 #                         and every listed file still as the land left it (A/M/T: the recorded mode and blob;
 #                         D: absent) or already as HEAD has it (nothing to undo), in the working tree and in the
@@ -136,9 +143,9 @@ idxent() { # idxent <path>: its stage-0 entry in the index; "?" when unmerged or
     n=$(printf '%s\n' "$l" | wc -l | tr -d ' ')
     case $n:$l in 1:*" 0	$1") l=${l%%	*}; echo "${l% 0}" ;; *) echo "?" ;; esac
 }
-headent() { # headent <path>: its entry in HEAD
+headent() { # headent <path> [commit]: its entry in that commit (default HEAD)
     local l
-    l=$(git ls-tree -z --full-tree HEAD -- "$1" 2>/dev/null | tr '\0' '\n') || { echo "?"; return; }
+    l=$(git ls-tree -z --full-tree "${2:-HEAD}" -- "$1" 2>/dev/null | tr '\0' '\n') || { echo "?"; return; }
     [ -n "$l" ] || { echo -; return; }
     case $l in *"	$1") l=${l%%	*}; set -- $l; [ $# = 3 ] && echo "$1 $3" || echo "?" ;; *) echo "?" ;; esac
 }
@@ -210,6 +217,8 @@ land)
     need_unit; now=$(git rev-parse HEAD)
     if [ -f "$marker" ] && [ "$(mval head)" = "$now" ]; then
         die "the land of unit $(mval uid) at HEAD $now is still pending ($marker): commit it, or parallel.sh unland $slug $(mval uid), first"
+    elif [ -f "$marker" ]; then
+        die "the land of unit $(mval uid) from HEAD $(mval head) is not closed ($marker): parallel.sh landed $slug $(mval uid) first; nothing landed"
     fi
     out=$(scope_check) || { echo "FAIL $uid changes files outside its paths; not landed:"; echo "$out"; exit 1; }
     car=$(col "$uid" carrier); multi=""
@@ -333,6 +342,7 @@ landed)
     mu=$(mval uid); mh=$(mval head); now=$(git rev-parse HEAD)
     [ "$mu" = "$uid" ] || die "the pending land belongs to unit ${mu:-?}, not $uid; not closed"
     [ "$mh" != "$now" ] || die "HEAD is still $mh where $uid landed: commit the land first; not closed"
+    git merge-base --is-ancestor "$mh" HEAD 2>/dev/null || die "HEAD $now does not contain $mh where $uid landed; not closed"
     # the land's content must be in HEAD (A/M: the recorded blob; D: gone) with nothing of it left to commit
     miss=""
     while IFS=$'\t' read -r st f h; do
@@ -347,8 +357,30 @@ landed)
   $f (uncommitted in the index or working tree: ${p%%$'\n'*})"
     done <<< "$(awk -F'\t' '$1 ~ /^[AMDT]$/ { print $1 "\t" $2 "\t" $3 }' "$marker")"
     [ -z "$miss" ] || { echo "FAIL the land of $uid is not committed as it landed; not closed, $marker kept:$miss"; exit 1; }
+    # the land's commit: the first commit after it (first parent) that holds all of it; HEAD does (checked above)
+    lc=""
+    for c in $(git rev-list --first-parent --reverse "$mh..HEAD"); do
+        full=1
+        while IFS=$'\t' read -r st f h; do
+            [ -n "$f" ] || continue
+            hb=$(headent "$f" "$c")
+            if [ "$st" = D ]; then [ "$hb" = - ] || { full=0; break; }
+            elif [ "$hb" != "$h" ]; then full=0; break; fi
+        done <<< "$(awk -F'\t' '$1 ~ /^[AMDT]$/ { print $1 "\t" $2 "\t" $3 }' "$marker")"
+        [ $full = 1 ] && { lc=$c; break; }
+    done
+    [ -n "$lc" ] || lc=$now
+    # record it here, not by hand: the table's state and landed, and the log's "commit <new> from <source>"
+    # in its evidence column (what run-state.sh check reads), before the record goes, so a failure keeps it
+    ms=$(mval source)
+    out=$("$here/lines.sh" line set "$slug" "$uid" state=landed "landed=$lc" 2>&1) || die "the land of $uid is committed, but the table was not updated ($out); not closed, $marker kept: run landed again"
+    ev="commit $lc from ${ms:-?}"
+    if [ -f ".dflow/$slug.tsv" ] && ! awk -F'\t' -v e="$ev" '$5 == e { f = 1 } END { exit !f }' ".dflow/$slug.tsv"; then
+        "$here/log.sh" ".dflow/$slug.tsv" commit "落地 $uid" "按 SHA 落地，已验收的来源提交" "$ev" landed ||
+            die "the land of $uid is committed and the table updated, but the log row was not written; not closed, $marker kept: run landed again"
+    fi
     rm -f "$marker" || die "could not remove $marker"
-    echo "ok closed the land of $uid (HEAD $mh -> $now)" ;;
+    echo "ok closed the land of $uid (HEAD $mh -> $now; table state=landed landed=$lc$([ -f ".dflow/$slug.tsv" ] && echo "; logged commit $lc from ${ms:-?}"))" ;;
 cleanup)
     [ -z "$uid" ] || [ "$uid" = --ignored-ok ] || die "unknown cleanup option: $uid"
     need_table; wl=$(git worktree list --porcelain); bad=0

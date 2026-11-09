@@ -76,6 +76,25 @@ p=$(PATH="$t/bin:$PATH" "$ag" start demo a 10 "$(bf 10)" "$t/wa"); mine+=("$p")
 "$ag" wait demo a 10 20 >/dev/null
 grep -Eq '^(claude -p --dangerously-skip-permissions|codex exec --dangerously-bypass-approvals-and-sandbox -C .* -)$' .dflow/demo/run/a-10.out && ok || bad "default model: $(cat .dflow/demo/run/a-10.out)"
 
+# M1: family:model passes the model to the CLI (--model for Claude, -m for Codex); DFLOW_AGENT_CMD sees it
+# as DFLOW_MODEL; an empty or bad model, or an unknown family, is refused before any claim
+p=$(PATH="$t/bin:$PATH" "$ag" start demo a 18 "$(bf 18)" "$t/wa" claude:claude-opus-5-5); mine+=("$p")
+"$ag" wait demo a 18 20 >/dev/null
+grep -qx "claude -p --dangerously-skip-permissions --model claude-opus-5-5" .dflow/demo/run/a-18.out && ok || bad "claude model: $(cat .dflow/demo/run/a-18.out)"
+p=$(PATH="$t/bin:$PATH" "$ag" start demo a 19 "$(bf 19)" "$t/wa" codex:gpt-6-astra); mine+=("$p")
+"$ag" wait demo a 19 20 >/dev/null
+grep -qx "codex exec --dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -C $wt -" .dflow/demo/run/a-19.out && ok || bad "codex model: $(cat .dflow/demo/run/a-19.out)"
+p=$(DFLOW_AGENT_CMD='echo "model=$DFLOW_MODEL"' "$ag" start demo a 20 "$(bf 20)" "$t/wa" claude:claude-opus-5-5); mine+=("$p")
+"$ag" wait demo a 20 20 >/dev/null; grep -qx "model=claude-opus-5-5" .dflow/demo/run/a-20.out && ok || bad "DFLOW_MODEL: $(cat .dflow/demo/run/a-20.out)"
+for m in claude: 'claude:a b' 'codex:-x' gemini gemini:pro; do
+    out=$(PATH="$t/bin:$PATH" "$ag" start demo a 21 "$(bf 21)" "$t/wa" "$m" 2>&1); rc=$?
+    [ $rc != 0 ] && [ ! -e .dflow/demo/run/a-21.claim ] && ok || bad "model $m accepted: $rc $out"
+done
+# N1: wait, peek and stop of an attempt this repo never started say so (exit 1), not "ended lost" or a
+# confirmed stop; from another repo the same holds
+for c in peek stop; do out=$("$ag" $c demo a 99); [ $? = 1 ] && [ "$out" = "no such attempt demo/a/99 in $(pwd -P)" ] && ok || bad "$c of no attempt: $out"; done
+out=$("$ag" wait demo a 99 1); [ $? = 1 ] && echo "$out" | grep -q "^no such attempt demo/a/99" && ok || bad "wait of no attempt: $out"
+o2="$t/other"; git init -q "$o2"; out=$(cd "$o2" && "$ag" stop demo a 8); [ $? = 1 ] && echo "$out" | grep -q "^no such attempt demo/a/8 in" && ok || bad "stop from another repo: $out"
 out=$("$ag" start demo a 11 "$(bf 11)" "$t/nowhere" 2>&1); [ $? = 1 ] && ok || bad "missing worktree: $out"
 "$ag" start demo a 0 "$(bf 1)" "$t/wa" >/dev/null 2>&1; [ $? = 1 ] && ok || bad "attempt 0 accepted"
 "$ag" wait >/dev/null 2>&1; [ $? = 2 ] && ok || bad "usage"

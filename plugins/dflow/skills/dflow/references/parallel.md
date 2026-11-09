@@ -83,8 +83,10 @@ order. In Codex the steps are the same with the tools in
       file makes the next `land` refuse. Untracked files these checks
       produced are listed, then deleted; any other goes to the user first,
       per **Ask first** in `SKILL.md`. Pass: `git add` only the unit's
-      paths, commit once, `parallel.sh landed <slug> <id>`, set `landed
-      <sha>`, log it. Fail:
+      paths, commit once, `parallel.sh landed <slug> <id>` (it sets
+      `state=landed` and `landed`, and logs `commit <new> from <source>` when
+      the run keeps a log `.dflow/<slug>.tsv`; refused after the commit:
+      fix the cause and run it again, never unland). A check fails:
       `parallel.sh unland <slug> <id>`, send the unit back.
    5. Sent back: `tries`+1, `base` set to the new HEAD, a fresh subagent
       with the reason in its brief. Never resume the old one for a sent-back

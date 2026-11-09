@@ -30,7 +30,11 @@ pstack `correct`, `reflect`, and `authoring-a-skill`. Principles: 结构化教�
    `reflect`). Keep only text that changes a decision; delegate to other
    files by path instead of restating; check that the frontmatter has `name`
    and `description` and every referenced path exists. When the skill has a
-   test script, run it.
+   test script, run it. Subtract first: each written-rule edit names its net
+   line change and the line it replaces or deletes. When slimming a skill or
+   aligning it with upstream, first count each flow's uses in recent
+   transcripts; a flow unused for weeks is a deletion candidate for the
+   user to decide.
 5. Global rule files (`~/.codex/AGENTS.md`, `~/.codex/config.toml`,
    `~/.claude/CLAUDE.md`, `~/.claude/settings.json`) and anything outside the goal are ask-first:
    show the exact change and wait. Repo files in scope: edit and commit
@@ -47,5 +51,5 @@ pstack `correct`, `reflect`, and `authoring-a-skill`. Principles: 结构化教�
 - 错误类型：<描述 → 出现过的证据（至少两次）；新增或修改规则时写“用户要求”>
 - 选的层级：<结构 / 检查 / 测试 / 文字>。更高层级为什么不行：<…；新增或修改规则时省略>
 - 证明：<重复错误：在过去那次错误上失败的输出 → 修正后通过的输出；新增或修改规则：一个典型请求和一个边界请求的检查结果>
-- 改动：<文件和提交；全局文件写"待你确认"和具体改动>
+- 改动：<文件和提交；文字规则写净增行数和替换或删去的行；全局文件写"待你确认"和具体改动>
 ```
